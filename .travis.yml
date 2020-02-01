@@ -2,4 +2,5 @@ language: haskell
 ghc:
   - "8.6"
 install:
+  cabal new-build
   cabal new-install --lib
