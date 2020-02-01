@@ -170,12 +170,7 @@ relation a b = if a == b then EQUIV else goRelation (alphaReduce a) (alphaReduce
         | x == y = EQUIV
         | otherwise = NOTEQ
     goRelation (X x) y = NOTEQ
-    goRelation y (X x) = NOTEQ  
-    goRelation (Prim p) (Prim q) 
-        | p == q = EQUIV
-        | otherwise = NOTEQ
-    goRelation (Prim p) y = NOTEQ
-    goRelation y (Prim p) = NOTEQ
+    goRelation y (X x) = NOTEQ
     goRelation (Ident a b) (Ident c d) = goRelation (Pair a b) (Pair c d)
     goRelation (Ident a b) x = NOTEQ
     goRelation x (Ident a b) = NOTEQ
@@ -211,6 +206,11 @@ relation a b = if a == b then EQUIV else goRelation (alphaReduce a) (alphaReduce
     goRelation (Ap t u) (Ap v w) = go (goRelation t v) (goRelation u w) where
         go EQUIV x = x
         go x y = NOTEQ
+    goRelation (Prim p) (Prim q)
+        | p == q = EQUIV
+        | otherwise = NOTEQ
+    goRelation (Prim p) y = NOTEQ
+    goRelation y (Prim p) = NOTEQ
     goRelation x y = NOTEQ
 
 depth :: Term -> Int
@@ -469,9 +469,9 @@ getDefSubs (Def f cs) = cs
 
 insertMT :: InductionTree -> Inductor -> InductionTree
 insertMT tree ind = go tree (indPattern ind) (indMorph ind) where
-    go Null (Def tt cs) m = Node [m] (Def tt cs) (insertAllMT Null (fmap toIdInd cs)) Null
+--    go Null (Def tt cs) m = Node [m] (Def tt cs) (insertAllMT Null (fmap toIdInd cs)) Null
     go Null tt m = Node [m] tt Null Null
-    go (Node ms (Def t ds) l r) (Def tt cs) m 
+    {-go (Node ms (Def t ds) l r) (Def tt cs) m
         | relation tt t == EQUIV = Node (m : ms) (Def t (setconcat cs ds)) (insertAllMT l (fmap toIdInd cs)) r
         | relation tt t == SUBTYPE = Node ms (Def t ds) (go l (Def tt cs) m) r
         | relation tt t == SUPERTYPE = go2 (Node ms (Def t ds) l r) cs 
@@ -482,7 +482,7 @@ insertMT tree ind = go tree (indPattern ind) (indMorph ind) where
         | relation (Def tt cs) t == SUBTYPE = Node ms t (go l (Def tt cs) m) r
         | relation (Def tt cs) t == SUPERTYPE = go2 (Node ms t l r) cs 
         | otherwise = Node ms t l (go r (Def tt cs) m) where
-            go2 node typs = Node [m] (Def tt cs) (insertAllMT node (fmap toIdInd cs)) Null
+            go2 node typs = Node [m] (Def tt cs) (insertAllMT node (fmap toIdInd cs)) Null-}
     go (Node ms t l r) tt m 
         | relation tt t == EQUIV = Node (m : ms) t l r
         | relation tt t == SUBTYPE = Node ms t (go l tt m) r
@@ -512,6 +512,9 @@ instance Semigroup InductionTree where
             | isMemberOf (indPattern x) ind = ind
             | otherwise = insertMT ind x
         go ind (x:xs) = go (go ind [x]) xs where
+
+instance Monoid InductionTree where
+  mempty = emptyMT
 
 instance Semigroup Context where
     ctx1 <> ctx2 = go ctx1 ctx2 where
@@ -556,8 +559,11 @@ introRules :: [Inductor] -> Context -> Context
 introRules [] ctx = ctx
 introRules ms (Ctx set tree) = Ctx set (insertAllMT tree ms) 
 
+defIn :: Context -> Term -> Term -> Context
+defIn ctx a b = intro (intro ctx (Def b [a])) a
+
 newType :: Term -> Context -> Context
-newType (Def s cs) (Ctx set tree) = Ctx set (insertMT tree (toIdInd (Def s cs)))
+newType (Def s cs) (Ctx set ind) = Ctx set $ insertAllMT (insertMT ind (toIdInd (Def s cs))) (fmap toIdInd cs)
 newType (Ap (Ap (Prim DefType) a) b) ctx = newType newT ctx where
     newT = Def b [a]
 newType (Ap (Ap (Prim DefEq) x) y) ctx = newType (Def (Ident x y) [(Ap (Ap (Prim DefEq) x) y)]) ctx <> newType x ctx <> newType y ctx
@@ -615,11 +621,16 @@ inType x a = Def a [x]
 inU :: Term -> Term
 inU x = inType x U
 
-xInType :: String -> Term -> Term
-xInType s = inType (X s)
+xInType :: String -> String -> Term
+xInType s t = inType (X s) (defConst t)
 
-xInU :: String -> Term
-xInU s = xInType s U
+typesIn :: [Term] -> Term -> Term
+typesIn xs a = Def a xs
+
+xsInType :: [String] -> String -> Term
+xsInType xs a = Def (defConst a) (go xs) where
+  go [] = []
+  go (x : xs) = X x : go xs
 
 typeInductor :: Inductor
 typeInductor = Inductor (Ap (Ap (Prim DefType) U) U) typeReduce
@@ -640,7 +651,7 @@ anyCoprod :: Term
 anyCoprod = Coprod U U
 
 coprodType :: Term
-coprodType = Def anyCoprod [Ap (Prim Inl) (inType (indX 0) (X "A")), Ap (Prim Inr) (inType (indX 1) (X "B"))]
+coprodType = Def anyCoprod [Ap (Prim Inl) U, Ap (Prim Inr) U]
 
 funcType :: Term
 funcType = Ap (Ap (Prim Func) U) U
@@ -655,7 +666,7 @@ piType :: Term
 piType = Def (Pi U U) [lambdaType, funcType]
 
 piInductorUniq :: Inductor
-piInductorUniq = Inductor (Ap (Pi (xInU wild) U) (xInU wild)) (\ (Ap (Pi a f ) b) -> if a == b then f else (Ap (Pi a f ) b))
+piInductorUniq = Inductor (Ap (Pi wildcard U) wildcard) (\ (Ap (Pi a f ) b) -> if a == b then f else (Ap (Pi a f ) b))
 
 piInductor1 :: Inductor
 piInductor1 = Inductor lambdaType (\ (Lambda a b) -> Pi (X a) b)
@@ -726,7 +737,7 @@ numnat (Ap (Prim (DefConst "succ")) n) = numnat n + 1
 numnat (Prim (DefConst "0")) = 0
 
 idenTerm :: Term -> Term
-idenTerm t = Ident (xInType "x" t) (xInType "y" t)  
+idenTerm t = Ident (inType (X "x") t) (inType (X "y") t)
 
 identityFunctorLaw1 :: Inductor
 identityFunctorLaw1 = Inductor (Ap U (idenTerm U)) (\ (Ap a (Ident b c)) -> Ident (a .$ b) (a .$ c) )
@@ -755,4 +766,3 @@ ctx0 = newTypes ctxEmp [zero, one, two, nat, piType, sigmaType, pairType, coprod
 
 ctx1 :: Context
 ctx1 = ctx0 <> Ctx Set.empty typeTheory
-
