@@ -3,4 +3,5 @@
 .stack-work
 .idea
 dist
+dist-newstyle
 formal-types.iml
