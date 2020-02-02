@@ -72,7 +72,7 @@ instance Show Term where
     show (Coprod a b) = "(" ++ show a ++ " + " ++ show b ++ ")"
     show (Ap (Ap (Prim DefEq) a) b) = "(" ++ show a ++ " " ++ show DefEq ++ " " ++ show b ++ ")"
     show (Ap (Ap (Prim DefType) a) b) = "(" ++ show a ++ " " ++ show DefType ++ " " ++ show b ++ ")"
-    show (Ident a b) = "(" ++ show a ++ " = " ++ show b ++ ")"
+    show (Ident a b) = "(" ++ show a ++ " ≡ " ++ show b ++ ")"
     show (Ap (Ap (Prim Func) a) b) = "(" ++ show a ++ " " ++ show Func ++ " " ++ show b ++ ")"
     show (Ap t u) = "(" ++ show t ++ " " ++ show u ++ ")"
     show (Pi t u) = "∏(" ++ show t ++ ")(" ++ show u ++ ")"
@@ -370,7 +370,7 @@ prjRInd :: Inductor
 prjRInd = Inductor prjMatchR prjMatchRComp
 
 reflElim :: Inductor
-reflElim = Inductor (Ap (Prim Refl) U) (\ (Ap (Prim Refl) x) -> Ident (x) x)
+reflElim = Inductor (Ap (Prim Refl) U) (\ (Ap (Prim Refl) x) -> Ident x x)
 
 unary :: PrimConst -> Term -> Term
 unary p = Ap (Prim p)
@@ -407,10 +407,6 @@ uniquesTree (x:xs) = if elem x xs then xs else x : uniquesTree xs
 
 instance Show InductionTree where
     show tree = Tree.drawTree  $ fmap show $ indToTree tree
-    {- show tree = showFunc tree 0 where
-        showFunc Null d = ""
-        showFunc (Node fs m l r) d = replicate d ' ' ++ go m fs ++ "\n" ++ showFunc l (d + 3) ++ showFunc r d where
-            go m fs = show $ Set.fromList $ fmap (Inductor m) fs -}
 
 inductors :: InductionTree -> [Inductor]
 inductors = go [] where
@@ -469,20 +465,7 @@ getDefSubs (Def f cs) = cs
 
 insertMT :: InductionTree -> Inductor -> InductionTree
 insertMT tree ind = go tree (indPattern ind) (indMorph ind) where
---    go Null (Def tt cs) m = Node [m] (Def tt cs) (insertAllMT Null (fmap toIdInd cs)) Null
     go Null tt m = Node [m] tt Null Null
-    {-go (Node ms (Def t ds) l r) (Def tt cs) m
-        | relation tt t == EQUIV = Node (m : ms) (Def t (setconcat cs ds)) (insertAllMT l (fmap toIdInd cs)) r
-        | relation tt t == SUBTYPE = Node ms (Def t ds) (go l (Def tt cs) m) r
-        | relation tt t == SUPERTYPE = go2 (Node ms (Def t ds) l r) cs 
-        | otherwise = Node ms (Def t ds) l (go r (Def tt cs) m) where
-            go2 node typs = Node [m] (Def tt cs) (insertAllMT node (fmap toIdInd cs)) Null
-    go (Node ms t l r) (Def tt cs) m 
-        | relation (Def tt cs) t == EQUIV = Node (m : ms) (Def tt cs) (insertAllMT l (fmap toIdInd cs)) r
-        | relation (Def tt cs) t == SUBTYPE = Node ms t (go l (Def tt cs) m) r
-        | relation (Def tt cs) t == SUPERTYPE = go2 (Node ms t l r) cs 
-        | otherwise = Node ms t l (go r (Def tt cs) m) where
-            go2 node typs = Node [m] (Def tt cs) (insertAllMT node (fmap toIdInd cs)) Null-}
     go (Node ms t l r) tt m 
         | relation tt t == EQUIV = Node (m : ms) t l r
         | relation tt t == SUBTYPE = Node ms t (go l tt m) r
@@ -736,17 +719,23 @@ numnat :: Term -> Int
 numnat (Ap (Prim (DefConst "succ")) n) = numnat n + 1
 numnat (Prim (DefConst "0")) = 0
 
-idenTerm :: Term -> Term
-idenTerm t = Ident (inType (X "x") t) (inType (X "y") t)
+equivType :: Term
+equivType = Ident U U
 
 identityFunctorLaw1 :: Inductor
-identityFunctorLaw1 = Inductor (Ap U (idenTerm U)) (\ (Ap a (Ident b c)) -> Ident (a .$ b) (a .$ c) )
+identityFunctorLaw1 = Inductor (Ap U (Ident U U)) (\ (Ap a (Ident b c)) -> Ident (a .$ b) (a .$ c) )
 
 identityFunctorLaw2 :: Inductor
-identityFunctorLaw2 = Inductor (Ap (idenTerm U) U) (\ (Ap (Ident a b) c) -> Ident (a .$ c) (b .$ c) )
+identityFunctorLaw2 = Inductor (Ap (Ident U U) U) (\ (Ap (Ident a b) c) -> Ident (a .$ c) (b .$ c) )
 
 alphaConversion :: Inductor
 alphaConversion = Inductor piType alphaReduce
+
+pathInd :: Inductor
+pathInd = Inductor (Ident U U) (\ x -> x .: (identType x))
+
+identType :: Term -> Term
+identType t = Def (defConst ("=" ++ show t)) [Ap (Prim Refl) t]
 
 typeTheory :: InductionTree
 typeTheory = insertAllMT emptyMT [zeroInductor, oneInductor, typeInductor,
@@ -756,13 +745,14 @@ typeTheory = insertAllMT emptyMT [zeroInductor, oneInductor, typeInductor,
     reflElim, 
     funcElim, lambdaInductor, 
     piInductor1, piInductor2, piInductor3, piInductor4, piInductorUniq,
-    sigmaInductor1, sigmaInductor2]
+    sigmaInductor1, sigmaInductor2,
+    pathInd]
 
 ctxEmp :: Context
 ctxEmp = Ctx Set.empty emptyMT
 
 ctx0 :: Context
-ctx0 = newTypes ctxEmp [zero, one, two, nat, piType, sigmaType, pairType, coprodType, (idenTerm U)]
+ctx0 = newTypes ctxEmp [zero, one, two, nat, piType, sigmaType, pairType, coprodType, equivType, (identType U)]
 
 ctx1 :: Context
 ctx1 = ctx0 <> Ctx Set.empty typeTheory
