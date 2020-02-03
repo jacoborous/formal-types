@@ -404,7 +404,7 @@ inductors = go [] where
 showMatches :: Term -> Context -> Set.Set Term
 showMatches t (Ctx ts intree) = go Set.empty t intree where
     go ls tt Null = ls
-    go ls tt (Node fs m l r) | tt <= m = Set.union (Set.fromList $ fmap (\ x -> Ident (tt) (x tt)) fs) (Set.union (go ls tt l) (go ls tt r))
+    go ls tt (Node fs m l r) | tt <= m = Set.union (Set.fromList $ fmap (\ x -> if tt == (x tt) then tt else Ident (tt) (x tt)) fs) (Set.union (go ls tt l) (go ls tt r))
                              | otherwise = Set.union (go ls tt l) (go ls tt r)
 
 applyMatches :: Term -> Context -> Set.Set Term
@@ -495,8 +495,16 @@ instance Monoid Context where
     mempty = ctxEmp
 
 pathInduction :: Context -> Term -> Set.Set Term
-pathInduction ctx (Ap t1 t2) = Set.union (showMatches (Ap t1 t2) ctx) (Set.fromList [Ap x y | x <- Set.toList $ pathInduction ctx t1, y <- Set.toList $ pathInduction ctx t2])
-pathInduction ctx term = Set.insert term (showMatches term ctx)
+pathInduction ctx (Ap t1 t2) = Set.union (applyMatches (Ap t1 t2) ctx) (Set.fromList [Ap x y | x <- Set.toList $ pathInduction ctx t1, y <- Set.toList $ pathInduction ctx t2])
+pathInduction ctx term = Set.insert term (applyMatches term ctx)
+
+pathIteration :: Context -> Int -> Context
+pathIteration ctx 0 = ctx
+pathIteration (Ctx set ind) 1 = Ctx (iteratePaths (Ctx set ind) set) ind
+pathIteration (Ctx set ind) n = pathIteration (Ctx (iteratePaths (Ctx set ind) set) ind) (n-1)
+
+iteratePaths :: Context -> Set.Set Term -> Set.Set Term
+iteratePaths ctx set = Set.fromList $ concatMap (Set.toList . pathInduction ctx) set
 
 derive :: Context -> Context
 derive ctx = applyMorphs $ applyDefs ctx --applyDefs $ applyMorphs ctx
@@ -540,6 +548,7 @@ newType (Def s cs) (Ctx set ind) = Ctx set $ insertAllMT (insertMT ind (toIdInd 
 newType (Ap (Ap (Prim DefType) a) b) ctx = newType newT ctx where
     newT = Def b [a]
 newType (Ap (Ap (Prim DefEq) x) y) ctx = newType (Def (Ident x y) [(Ap (Ap (Prim DefEq) x) y)]) ctx <> newType x ctx <> newType y ctx
+newType (Ident x y) (Ctx set tree) = Ctx set (insertAllMT tree [(Inductor x (const y)), (Inductor y (const x))])
 newType x (Ctx set tree) = Ctx set (insertMT tree (toIdInd x))
 
 addTypes :: Context -> [Term] -> Context
