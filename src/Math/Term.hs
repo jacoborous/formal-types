@@ -43,12 +43,6 @@ indPattern (Inductor m f) = m
 indMorph :: Inductor -> Term -> Term
 indMorph (Inductor m f) = f
 
-indToFunc :: Inductor -> Term
-indToFunc (Inductor m f) = Ap (Ap (Prim Func) m) (f m)
-
-funcToInd :: Term -> Inductor
-funcToInd (Ap (Ap (Prim Func) m) g) = Inductor m (const g)
-
 instance Show PrimConst where
     show Zero = "⟘"
     show One = "⟙"
@@ -59,7 +53,6 @@ instance Show PrimConst where
     show Prjr = "prjr"
     show DefType = ":"
     show DefEq = "≡"
-    show Func = "->"
     show Refl = "refl"
     show Nat = "𝐍"
     show (DefConst s) = s
@@ -72,17 +65,15 @@ instance Show Term where
     show (Coprod a b) = "(" ++ show a ++ " + " ++ show b ++ ")"
     show (Ap (Ap (Prim DefEq) a) b) = "(" ++ show a ++ " " ++ show DefEq ++ " " ++ show b ++ ")"
     show (Ap (Ap (Prim DefType) a) b) = "(" ++ show a ++ " " ++ show DefType ++ " " ++ show b ++ ")"
-    show (Ident a b) = "(" ++ show a ++ " ≡ " ++ show b ++ ")"
-    show (Ap (Ap (Prim Func) a) b) = "(" ++ show a ++ " " ++ show Func ++ " " ++ show b ++ ")"
+    show (Ident a b) = "(" ++ show a ++ " ≃ " ++ show b ++ ")"
     show (Ap t u) = "(" ++ show t ++ " " ++ show u ++ ")"
     show (Pi t u) = "∏(" ++ show t ++ ")(" ++ show u ++ ")"
     show (Sigma t u) = "∑(" ++ show t ++ ")(" ++ show u ++ ")"
-    show (Prim p) = show p 
+    show (Prim p) = show p
     show (Def s cs) = showDef (Def s cs) 1 where
         showDef (Def f cs) 0 = showDef f 0
         showDef (Ap (Ap (Prim DefEq) t) u) 0 = "(" ++ (showDef t 0 ) ++ " " ++ show DefEq ++ " " ++ (showDef u 0 ) ++ ")"
         showDef (Ap (Ap (Prim DefType) t) u) 0 = "(" ++ (showDef t 0 ) ++ " " ++ show DefType ++ " " ++ (showDef u 0 ) ++ ")"
-        showDef (Ap (Ap (Prim Func) t) u) 0 = "(" ++ (showDef t 0 ) ++ " " ++ show Func ++ " " ++ (showDef u 0 ) ++ ")"
         showDef (Sigma t u) 0 = "∑(" ++ (showDef t 0 ) ++ ")(" ++ (showDef u 0 ) ++ ")"
         showDef (Pi t u) 0 = "∏(" ++ (showDef t 0 ) ++ ")(" ++ (showDef u 0 ) ++ ")"
         showDef (Ident t u) 0 = "(" ++ (showDef t 0 ) ++ " = " ++ (showDef u 0 ) ++ ")"
@@ -166,26 +157,19 @@ relation a b = if a == b then EQUIV else goRelation (alphaReduce a) (alphaReduce
                 | or (fmap (== EQUIV) y) = SUPERTYPE
                 | or (fmap (== SUBTYPE) y) = SUPERTYPE
                 | otherwise = NOTEQ
-    goRelation (X x) (X y) 
+    goRelation (X x) (X y)
+        | x == wild || y == wild = EQUIV
         | x == y = EQUIV
         | otherwise = NOTEQ
     goRelation (X x) y = NOTEQ
     goRelation y (X x) = NOTEQ
-    goRelation (Ident a b) (Ident c d) = goRelation (Pair a b) (Pair c d)
-    goRelation (Ident a b) x = NOTEQ
-    goRelation x (Ident a b) = NOTEQ
-    goRelation (Lambda s t) (Lambda x b) = if s == x then goRelation t b else NOTEQ
-    goRelation (Lambda s t) (Pi (X x) b) = if s == x then goRelation t b else NOTEQ
-    goRelation (Pi (X x) b) (Lambda s t) = if s == x then goRelation b t else NOTEQ
-    goRelation (Lambda s t) y = NOTEQ
-    goRelation y (Lambda s t) = NOTEQ 
-    goRelation (Pi a b) (Pi c d) = go (goRelation a c) (goRelation b d) where
-        go EQUIV x = x
-        go _ _ = NOTEQ
-    goRelation (Pair a b) (Sigma c d) = goRelation (Pair a b) (Pair c d)
-    goRelation (Sigma a b) (Pair c d) = goRelation (Pair a b) (Pair c d)
-    goRelation (Sigma a b) (Sigma c d) = go (goRelation a c) (goRelation b d) where
-        go EQUIV x = x
+    goRelation (Lambda s t) (Lambda x b) = go2 (alphaReduce (Lambda s t)) (alphaReduce (Lambda x b)) where
+        go2 (Lambda i j) (Lambda k l) = goRelation j l
+    goRelation (Lambda s t) (Pi (X x) b) = relation (Lambda s t) (Lambda x b)
+    goRelation (Pi (X x) b) (Lambda s t) = relation (Lambda x b) (Lambda s t)
+    goRelation (Pi a b) (Pi c d) = goRelation (Ap a b) (Ap c d)
+    goRelation a (Sigma b c) = go (goRelation a b) (goRelation a c) where
+        go x EQUIV = SUBTYPE
         go _ _ = NOTEQ
     goRelation (Coprod a b) (Coprod c d) = goRelation (Pair a b) (Pair c d)
     goRelation (Ap (Prim Inl) x) (Coprod a b) = go $ goRelation x a where
@@ -204,7 +188,13 @@ relation a b = if a == b then EQUIV else goRelation (alphaReduce a) (alphaReduce
         go SUPERTYPE SUPERTYPE = SUPERTYPE
         go x y = NOTEQ
     goRelation (Ap t u) (Ap v w) = go (goRelation t v) (goRelation u w) where
-        go EQUIV x = x
+        go EQUIV EQUIV = EQUIV
+        go SUBTYPE EQUIV = SUBTYPE
+        go EQUIV SUBTYPE = SUBTYPE
+        go SUBTYPE SUBTYPE = SUBTYPE
+        go EQUIV SUPERTYPE = SUPERTYPE
+        go SUPERTYPE EQUIV = SUPERTYPE
+        go SUPERTYPE SUPERTYPE = SUPERTYPE
         go x y = NOTEQ
     goRelation (Prim p) (Prim q)
         | p == q = EQUIV
@@ -252,6 +242,7 @@ beta :: Term -> Term
 beta (Ap (Lambda x m) n) 
     | Set.disjoint (freeVars n) (boundVars m) = substitution (X x) m n
     | otherwise = Ap (Lambda x m) n
+beta x = error (show x)
 
 pureSub :: Term -> Term -> Term -> Term
 pureSub v m n = if v == m then n else go v m where
@@ -322,13 +313,10 @@ bind t expr
 t |-> expr = bind t expr
 
 infixl 9 .$
-infixr 0 .=, .:, -->
+infixr 0 .=, .:
 
 (.$) :: Term -> Term -> Term
 t .$ u = Ap t u
-
-(-->) :: Term -> Term -> Term
-x --> y = binary Func x y
 
 (.=) :: Term -> Term -> Term
 x .= y = binary DefEq x y
@@ -515,11 +503,13 @@ derive ctx = applyMorphs $ applyDefs ctx --applyDefs $ applyMorphs ctx
 
 applyMorphs :: Context -> Context
 applyMorphs (Ctx types intree) = go (Set.toList types) where
+    go [] = Ctx types intree
     go [t] = Ctx (pathInduction (Ctx types intree) t) intree
     go (t:ts) = go [t] <> go ts
 
 applyDefs :: Context -> Context
 applyDefs (Ctx types intree) = go (Set.toList types) where
+    go [] = (Ctx types intree)
     go [t] = newType t (Ctx types intree)
     go (t:ts) = newType t (go ts)
     
@@ -576,27 +566,13 @@ search ctx patterns = go (Set.toList patterns) where
 piForm :: Set.Set Term
 piForm = Set.fromList [inType (X "A") U, Lambda "x" U] -- two terms, a type, and a lambda. The type refers to the type of the variable bound to the lambda expression.
 
-defConst :: String -> Term
-defConst s = Prim $ DefConst s
+cnst :: String -> Term
+cnst s = Prim $ DefConst s
 
-inhabOne = defConst "⋆"
+inhabOne = cnst "⋆"
 
 wild = "𝑥"
 wildcard = X wild
-
-funcComp :: Term -> Term
-funcComp (Ap (Ap (Ap (Prim Func) a) b) c) 
-    | a == c = b
-    | otherwise = Ap (Ap (Ap (Prim Func) a) b) c
-
-funcElim :: Inductor
-funcElim = Inductor (Ap (Ap (Ap (Prim Func) U) U) U) funcComp
-
-typeReduce :: Term -> Term
-typeReduce (Ap (Ap (Prim DefType) a) b) 
-    | relation a b == SUBTYPE = one
-    | otherwise = Def b [a]
-typeReduce els = error $ "unrecognized: " ++ show els
 
 inType :: Term -> Term -> Term
 inType x a = Def a [x]
@@ -605,18 +581,15 @@ inU :: Term -> Term
 inU x = inType x U
 
 xInType :: String -> String -> Term
-xInType s t = inType (X s) (defConst t)
+xInType s t = inType (X s) (cnst t)
 
 typesIn :: [Term] -> Term -> Term
 typesIn xs a = Def a xs
 
 xsInType :: [String] -> String -> Term
-xsInType xs a = Def (defConst a) (go xs) where
+xsInType xs a = Def (cnst a) (go xs) where
   go [] = []
   go (x : xs) = X x : go xs
-
-typeInductor :: Inductor
-typeInductor = Inductor (Ap (Ap (Prim DefType) U) U) typeReduce
 
 assocLaw0 :: Inductor
 assocLaw0 = Inductor (Ap (Ap U U) U) (\ (Ap (Ap a b) c) -> Ap a (Ap b c))
@@ -636,9 +609,6 @@ anyCoprod = Coprod U U
 coprodType :: Term
 coprodType = Def anyCoprod [Ap (Prim Inl) U, Ap (Prim Inr) U]
 
-funcType :: Term
-funcType = Ap (Ap (Prim Func) U) U
-
 lambdaType :: Term
 lambdaType = Lambda wild U
 
@@ -646,43 +616,13 @@ lambdaInductor :: Inductor
 lambdaInductor = Inductor (Ap lambdaType U) beta
 
 piType :: Term
-piType = Def (Pi U U) [lambdaType, funcType]
-
-piInductorUniq :: Inductor
-piInductorUniq = Inductor (Ap (Pi wildcard U) wildcard) (\ (Ap (Pi a f ) b) -> if a == b then f else (Ap (Pi a f ) b))
-
-piInductor1 :: Inductor
-piInductor1 = Inductor lambdaType (\ (Lambda a b) -> Pi (X a) b)
-
-piInductor2 :: Inductor
-piInductor2 = Inductor (Ap (Pi wildcard U) wildcard) (\ (Ap (Pi (X a) b) c) -> Ap (Lambda a b) c)
-
-piPairComp :: Term -> Term
-piPairComp (Pi (Pair x y) (Lambda wild c)) = Pi x (Pi y g) where 
-    g = substitution wildcard c (Pair x y) 
-
-piInductor3 :: Inductor
-piInductor3 = Inductor (Pi (Pair U U) (Lambda wild U)) piPairComp  
-
-piCoprodComp :: Term -> Term
-piCoprodComp (Pi (Coprod x y) (Pair g0 g1)) = Coprod (Ap g0 x) (Ap g1 y) -- third term must be lambda term.
-piCoprodComp (Pi (Ap (Prim Inl) x) (Pair g0 g1)) = Ap g0 x
-piCoprodComp (Pi (Ap (Prim Inr) y) (Pair g0 g1)) = Ap g1 y
-
-piInductor4 :: Inductor
-piInductor4 = Inductor (Pi anyCoprod (Pair U U)) piCoprodComp
+piType =  Pi U U
 
 pairType :: Term
 pairType = Pair U U
 
 sigmaType :: Term
-sigmaType = Def (Sigma U U) [Pair U U]
-
-sigmaInductor1 :: Inductor
-sigmaInductor1 = Inductor (Pair U (Lambda wild U)) (\ (Pair a (Lambda x b)) -> Sigma (a) (substitution (X x) b a))
-
-sigmaInductor2 :: Inductor
-sigmaInductor2 = Inductor (Pair U (Pi U U)) (\ (Pair a (Pi x b)) -> Sigma (a) (substitution x b a))
+sigmaType = Sigma U U
 
 zero :: Term
 zero = Def (Prim Zero) []
@@ -697,22 +637,22 @@ oneInductor :: Inductor
 oneInductor = Inductor (Pi one U) (\ (Pi t c) -> c)
 
 two :: Term
-two = Def (Prim Two) [Coprod (defConst "𝟎") (defConst "𝟏")]
+two = Def (Prim Two) [Coprod (cnst "𝟎") (cnst "𝟏")]
 
 nat :: Term
-nat = Def (Prim Nat) [defConst "0", Ap successor nat]
+nat = Def (Prim Nat) [cnst "0", Ap successor nat]
 
 successor :: Term
-successor = defConst "succ"
+successor = cnst "succ"
 
 false2 :: Term
-false2 = inl (defConst "𝟎")
+false2 = inl (cnst "𝟎")
 
 true2 :: Term
-true2 = inr (defConst "𝟏")
+true2 = inr (cnst "𝟏")
 
 natnum :: Int -> Term
-natnum 0 = defConst "0"
+natnum 0 = cnst "0"
 natnum n = Ap successor (natnum (n-1))
 
 numnat :: Term -> Int 
@@ -731,28 +671,75 @@ identityFunctorLaw2 = Inductor (Ap (Ident U U) U) (\ (Ap (Ident a b) c) -> Ident
 alphaConversion :: Inductor
 alphaConversion = Inductor piType alphaReduce
 
-pathInd :: Inductor
-pathInd = Inductor (Ident U U) (\ x -> x .: (identType x))
+vble :: Context -> String -> Term -> Context
+vble ctx s t = intro ctx (Def t [X s])
 
-identType :: Term -> Term
-identType t = Def (defConst ("=" ++ show t)) [Ap (Prim Refl) t]
+typeFamily :: Context -> String -> Term -> Term -> Context
+typeFamily ctx s a b = intro (intro ctx (Def a [X s])) (Def (Ap b a) [Ap b (X s)])
+
+piIntro :: Context -> String -> Term -> Term -> Context
+piIntro ctx s a b = intro (typeFamily ctx s a b) (Def (Pi a b) [Lambda s (Ap b (X s))])
+
+pathInd :: Inductor
+pathInd = Inductor (Ident U U) (\ x -> x .: (pathType x))
+
+pathType :: Term -> Term
+pathType t = Def (cnst ("=" ++ show t)) [Ap (Prim Refl) t]
+
+piPairInductor :: Inductor
+piPairInductor = Inductor (Pi (Pair U U) (Lambda wild U)) (\ (Pi (Pair x y) c) -> bind x (bind y (beta $ c .$ (Pair x y))))
+
+coprodRec :: Term
+coprodRec = cnst "coprod_rec"
+
+coprodRecursor :: Term -> Term -> Term -> Term
+coprodRecursor z g0 g1 = bind z (coprodRec .$ (Pair (Pair g0 g1) z))
+
+piCoprodInductor :: Inductor
+piCoprodInductor = Inductor (Pi (Coprod U U) (Lambda wild (Coprod U U))) (\ (Pi (Coprod x y) (Lambda z (Coprod g0 g1))) -> coprodRecursor (X z) (bind x $ beta ((Lambda z g0) .$ x)) (bind y $ beta ((Lambda z g1) .$ y)))
+
+piCoprodDef :: Term -> Term
+piCoprodDef (Ap (Prim (DefConst "coprod_rec")) (Pair (Pair g0 g1) (Coprod a b))) = Coprod (g0 .$ a) (g1 .$ b)
+piCoprodDef (Ap (Prim (DefConst "coprod_rec")) (Pair (Pair g0 g1) (Ap (Prim Inl) a))) = g0 .$ a
+piCoprodDef (Ap (Prim (DefConst "coprod_rec")) (Pair (Pair g0 g1) (Ap (Prim Inr) b))) = g1 .$ b
+
+coprodRecInductor :: Inductor
+coprodRecInductor = Inductor (coprodRec .$ Pair (Pair U U) (Coprod U U)) piCoprodDef
 
 typeTheory :: InductionTree
-typeTheory = insertAllMT emptyMT [zeroInductor, oneInductor, typeInductor,
+typeTheory = insertAllMT emptyMT [zeroInductor, oneInductor,
     reflectLaw, identityFunctorLaw1, identityFunctorLaw2,
     assocLaw0, assocLaw1, alphaConversion,
     prjLInd, prjRInd, 
     reflElim, 
-    funcElim, lambdaInductor, 
-    piInductor1, piInductor2, piInductor3, piInductor4, piInductorUniq,
-    sigmaInductor1, sigmaInductor2,
+    lambdaInductor, piPairInductor, piCoprodInductor, coprodRecInductor,
     pathInd]
 
 ctxEmp :: Context
 ctxEmp = Ctx Set.empty emptyMT
 
 ctx0 :: Context
-ctx0 = newTypes ctxEmp [zero, one, two, nat, piType, sigmaType, pairType, coprodType, equivType, (identType U)]
+ctx0 = newTypes ctxEmp [zero, one, two, nat, piType, sigmaType, pairType, coprodType, equivType, (pathType U)]
 
 ctx1 :: Context
 ctx1 = ctx0 <> Ctx Set.empty typeTheory
+
+indToTypes :: InductionTree -> [Term]
+indToTypes (Null) = []
+indToTypes (Node fs m l r) = Def m (indToTypes l) : indToTypes r
+
+typeTree :: Term -> Tree.Tree Term
+typeTree (Def t cs) = Tree.Node t (fmap typeTree cs)
+typeTree t = Tree.Node t []
+
+ctxType :: Context -> Term
+ctxType (Ctx set ind) = go (indToTypes ind) where
+  go [x] = x
+  go xs = Def U xs
+
+ctxTree :: Context -> Tree.Tree Term
+ctxTree ctx = typeTree $ ctxType ctx
+
+expr :: Int -> Term -> Term
+expr 0 t = bind (indX 0) (t .$ (indX 0))
+expr n t = bind (indX n) ((expr (n-1) t) .$ (indX n))
