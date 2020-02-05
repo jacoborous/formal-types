@@ -178,6 +178,7 @@ insertMT :: InductionTree -> Inductor -> InductionTree
 insertMT tree ind
     | isMemberOf (indPattern ind) tree = tree
     | otherwise = go tree (indPattern ind) (indMorph ind) where
+        go Null (Def tt cs) m = Node [m] tt (insertAllMT Null (fmap toIdInd cs)) Null
         go Null tt m = Node [m] tt Null Null
         go (Node ms t l r) (Def tt cs) m
             | relation (Def tt cs) t == EQUIV = Node (m : ms) t (insertAllMT l (fmap toIdInd cs)) r

@@ -8,7 +8,7 @@ piExposedTypes :: [Term]
 piExposedTypes = [lambdaType, lambdaType2, piType, pairType]
 
 piExposedInductors :: [Inductor]
-piExposedInductors = [curryInductor, alphaConversion, piPairInductor, prjLInd, prjRInd]
+piExposedInductors = [lambdaInductor, curryInductor, alphaConversion, piPairInductor, prjLInd, prjRInd]
 
 lambdaType :: Term
 lambdaType = Lambda wild U
