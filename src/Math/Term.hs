@@ -361,24 +361,6 @@ prjl = Ap (Prim Prjl)
 prjr :: Term -> Term
 prjr = Ap (Prim Prjr)
 
-prjMatchL :: Term
-prjMatchL = Ap (Prim Prjl) (Pair U U)
-
-prjMatchR :: Term
-prjMatchR = Ap (Prim Prjr) (Pair U U)
-
-prjMatchLComp :: Term -> Term
-prjMatchLComp (Ap (Prim Prjl) (Pair a b)) = a
-
-prjMatchRComp :: Term -> Term
-prjMatchRComp (Ap (Prim Prjr) (Pair a b)) = b
-
-prjLInd :: Inductor
-prjLInd = Inductor prjMatchL prjMatchLComp
-
-prjRInd :: Inductor
-prjRInd = Inductor prjMatchR prjMatchRComp
-
 unary :: PrimConst -> Term -> Term
 unary p = Ap (Prim p)
 
@@ -396,64 +378,6 @@ instance Semigroup Term where
 
 instance Monoid Term where
     mempty = U
-
-data InductionTree = Null | Node [Term -> Term] Term InductionTree InductionTree
-
-indToTree :: InductionTree -> Tree.Tree Term
-indToTree tree = (go tree) !! 0 where
-    go Null = []
-    go (Node [] t l r) = uniquesTree $ [Tree.Node t (go l)] ++ go r
-    go (Node f t l r) = uniquesTree $ [Tree.Node (go2 t) (go l)] ++ go r where
-        go2 t = go3 (fmap (\ x -> (x t)) f) where
-            go3 [m] = if t == m then t else Pi t m
-            go3 (m:ms) = if ((go3 ms) == (Pi t m)) then (Pi t m) else Pair (go3 ms) (Pi t m)
-
-uniquesTree :: [Tree.Tree Term] -> [Tree.Tree Term]
-uniquesTree [] = []
-uniquesTree (x:xs) = if elem x xs then xs else x : uniquesTree xs
-
-instance Show InductionTree where
-    show tree = Tree.drawTree  $ fmap show $ indToTree tree
-
-inductors :: InductionTree -> [Inductor]
-inductors = go [] where
-    go ls Null = ls
-    go ls (Node m t l r) = go ls l ++ go ls r ++ fmap (Inductor t) m
-
-showMatches :: Term -> Context -> Set.Set Term
-showMatches t (Ctx ts intree) = go Set.empty t intree where
-    go ls tt Null = ls
-    go ls tt (Node fs m l r) | tt <= m = Set.union (Set.fromList $ fmap (\ x -> if tt == (x tt) then tt else Pi (tt) (x tt)) fs) (Set.union (go ls tt l) (go ls tt r))
-                             | otherwise = Set.union (go ls tt l) (go ls tt r)
-
-applyMatches :: Term -> Context -> Set.Set Term
-applyMatches t (Ctx ts intree) = go Set.empty t intree where
-    go ls tt Null = ls
-    go ls tt (Node fs m l r) | tt <= m = Set.union (Set.fromList $ fmap (\ x -> x tt) fs) (Set.union (go ls tt l) (go ls tt r))
-                             | otherwise = Set.union (go ls tt l) (go ls tt r)
-
-getRelations :: Term -> Context -> Set.Set (Term, TypeRel)
-getRelations t (Ctx ts intree) = go Set.empty t intree where
-    go ls tt Null = ls
-    go ls tt (Node fs m l r) = Set.union (Set.singleton (m, relation tt m)) (Set.union (go ls tt l) (go ls tt r))
-
-getRelated :: TypeRel -> Term -> Context -> Set.Set Term
-getRelated rel t (Ctx ts intree) = go Set.empty t intree where
-    go ls tt Null = ls
-    go ls tt (Node fs m l r) | rel == relation tt m = Set.union (Set.singleton m) (Set.union (go ls tt l) (go ls tt r))
-                             | otherwise = Set.union (go ls tt l) (go ls tt r)
-
-subtypes :: Context -> Term -> Set.Set Term
-subtypes ctx t = getRelated SUPERTYPE t ctx
-
-supertypes :: Context -> Term -> Set.Set Term
-supertypes ctx t = getRelated SUBTYPE t ctx
-
-equivs :: Context -> Term -> Set.Set Term
-equivs ctx t = getRelated EQUIV t ctx
-
-emptyMT :: InductionTree
-emptyMT = Node [id] U Null Null
 
 processList :: [a -> a] -> a -> a
 processList fs a = foldl (\ a f -> f a) a fs  
@@ -473,152 +397,8 @@ setconcat x y = Set.toList $ Set.union (Set.fromList x) (Set.fromList y)
 getDefSubs :: Term -> [Term]
 getDefSubs (Def f cs) = cs
 
-insertMT :: InductionTree -> Inductor -> InductionTree
-insertMT tree ind = go tree (indPattern ind) (indMorph ind) where
-    go Null tt m = Node [m] tt Null Null
-    go (Node ms t l r) tt m 
-        | relation tt t == EQUIV = Node (m : ms) t l r
-        | relation tt t == SUBTYPE = Node ms t (go l tt m) r
-        | relation tt t == SUPERTYPE = Node [m] tt (Node ms t l r) Null
-        | otherwise = Node ms t l (go r tt m)
-
-insertAllMT :: InductionTree -> [Inductor] -> InductionTree
-insertAllMT tree [] = tree
-insertAllMT tree (p:ps) = insertAllMT nexttree ps where 
-    nexttree = insertMT tree p  
-
-data Context = Ctx (Set.Set Term) InductionTree
-
-isMemberOf :: Term -> InductionTree -> Bool
-isMemberOf t Null = False
-isMemberOf t (Node ms tt l r) 
-    | t == tt = True
-    | otherwise = isMemberOf t l || isMemberOf t r
-
-instance Show Context where
-    show (Ctx types intree) = "context: \n" ++ show intree ++ "given types: \n" ++ show (insertAllMT emptyMT $ fmap toIdInd (Set.toList types)) 
-
-instance Semigroup InductionTree where
-    ind1 <> ind2 = go emptyMT (Set.toList (Set.fromList ((inductors ind1) ++ (inductors ind2)))) where
-        go ind [] = ind
-        go ind [x] 
-            | isMemberOf (indPattern x) ind = ind
-            | otherwise = insertMT ind x
-        go ind (x:xs) = go (go ind [x]) xs where
-
-instance Monoid InductionTree where
-  mempty = emptyMT
-
-instance Semigroup Context where
-    ctx1 <> ctx2 = go ctx1 ctx2 where
-        go (Ctx ms it1) (Ctx ns it2) = Ctx (Set.union ms ns) (it1 <> it2)
-
-instance Monoid Context where
-    mempty = ctxEmp
-
-pathInduction :: Context -> Term -> Set.Set Term
-pathInduction ctx (Pi t1 t2) = Set.union (applyMatches (Pi t1 t2) ctx) (Set.fromList [Pi x y | x <- Set.toList $ pathInduction ctx t1, y <- Set.toList $ pathInduction ctx t2])
-pathInduction ctx (Sigma t1 t2) = Set.union (applyMatches (Sigma t1 t2) ctx) (Set.fromList [Sigma x y | x <- Set.toList $ pathInduction ctx t1, y <- Set.toList $ pathInduction ctx t2])
-pathInduction ctx (Ident t1 t2) = Set.union (applyMatches (Ident t1 t2) ctx) (Set.fromList [Ident x y | x <- Set.toList $ pathInduction ctx t1, y <- Set.toList $ pathInduction ctx t2])
-pathInduction ctx (DefEq t1 t2) = Set.union (applyMatches (DefEq t1 t2) ctx) (Set.fromList [DefEq x y | x <- Set.toList $ pathInduction ctx t1, y <- Set.toList $ pathInduction ctx t2])
-pathInduction ctx (Coprod t1 t2) = Set.union (applyMatches (Coprod t1 t2) ctx) (Set.fromList [Coprod x y | x <- Set.toList $ pathInduction ctx t1, y <- Set.toList $ pathInduction ctx t2])
-pathInduction ctx (Pair t1 t2) = Set.union (applyMatches (Pair t1 t2) ctx) (Set.fromList [Pair x y | x <- Set.toList $ pathInduction ctx t1, y <- Set.toList $ pathInduction ctx t2])
-pathInduction ctx (Ap t1 t2) = Set.union (applyMatches (Ap t1 t2) ctx) (Set.fromList [Ap x y | x <- Set.toList $ pathInduction ctx t1, y <- Set.toList $ pathInduction ctx t2])
-pathInduction ctx (Inl t1) = Set.union (applyMatches (Inl t1) ctx) (Set.fromList [Inl x | x <- Set.toList $ pathInduction ctx t1])
-pathInduction ctx (Inr t1) = Set.union (applyMatches (Inr t1) ctx) (Set.fromList [Inr x | x <- Set.toList $ pathInduction ctx t1])
-pathInduction ctx term = Set.insert term (applyMatches term ctx)
-
-pathIteration :: Context -> Int -> Context
-pathIteration ctx 0 = ctx
-pathIteration (Ctx set ind) 1 = Ctx (iteratePaths (Ctx set ind) set) ind
-pathIteration (Ctx set ind) n = pathIteration (Ctx (iteratePaths (Ctx set ind) set) ind) (n-1)
-
-iteratePaths :: Context -> Set.Set Term -> Set.Set Term
-iteratePaths ctx set = Set.fromList $ concatMap (Set.toList . pathInduction ctx) set
-
-reduceIter :: Context -> Int -> Context
-reduceIter ctx 0 = ctx
-reduceIter (Ctx set ind) 1 = Ctx (reduce (Ctx set ind) set) ind
-reduceIter (Ctx set ind) n = pathIteration (Ctx (reduce (Ctx set ind) set) ind) (n-1)
-
-lowestRank :: Set.Set Term -> Term
-lowestRank = minByFunc depth
-
-reduce :: Context -> Set.Set Term -> Set.Set Term 
-reduce ctx set = Set.singleton $ lowestRank $ Set.fromList $ concatMap (Set.toList . pathInduction ctx) set
-
-derive :: Context -> Context
-derive ctx = applyMorphs $ applyDefs ctx --applyDefs $ applyMorphs ctx
-
-applyMorphs :: Context -> Context
-applyMorphs (Ctx types intree) = go (Set.toList types) where
-    go [] = Ctx types intree
-    go [t] = Ctx (pathInduction (Ctx types intree) t) intree
-    go (t:ts) = go [t] <> go ts
-
-applyDefs :: Context -> Context
-applyDefs (Ctx types intree) = go (Set.toList types) where
-    go [] = (Ctx types intree)
-    go [t] = newType t (Ctx types intree)
-    go (t:ts) = newType t (go ts)
-    
-newIdents :: Context -> Set.Set Term
-newIdents (Ctx typset intree) = go (Set.toList typset) where
-    go = foldr (Set.union . pathInduction (Ctx typset intree)) Set.empty
-
-intro :: Context -> Term -> Context
-intro (Ctx s it) t = newType t (Ctx (Set.insert t s) it)
-
-intros :: Context -> [Term] -> Context
-intros ctx [t] = intro ctx t
-intros ctx (t:ts) = intros (intro ctx t) ts
-
-inductionTree :: [Inductor] -> InductionTree
-inductionTree [] = emptyMT
-inductionTree ms = insertAllMT emptyMT ms
-
-introRules :: [Inductor] -> Context -> Context
-introRules [] ctx = ctx
-introRules ms (Ctx set tree) = Ctx set (insertAllMT tree ms) 
-
-defIn :: Context -> Term -> Term -> Context
-defIn ctx a b = intro (intro ctx (Def b [a])) a
-
-newType :: Term -> Context -> Context
-newType (Def s cs) (Ctx set ind) = Ctx set $ insertAllMT (insertMT ind (toIdInd (Def s cs))) (fmap toIdInd cs)
-newType (Ap (Ap (Prim DefType) a) b) ctx = newType newT ctx where
-    newT = Def b [a]
-newType (DefEq x y) (Ctx set tree)  = newType (Def (Ident y y) [(DefEq x y)]) (Ctx set (insertAllMT tree [(Inductor x (const y)), (Inductor y (const x))]))
-newType x (Ctx set tree) = Ctx set (insertMT tree (toIdInd x))
-
-addTypes :: Context -> [Term] -> Context
-addTypes = intros
-
-newTypes :: Context -> [Term] -> Context
-newTypes ctx [t] = newType t ctx
-newTypes ctx (t:ts) = newTypes (newType t ctx) ts
-
-equivdef :: Term -> Term -> Inductor
-equivdef input t = Inductor input (const t)
-
-induct :: Inductor -> Term -> Maybe Term
-induct (Inductor m f) t 
-    | relation t m == SUBTYPE = Just (f t)
-    | relation t m == EQUIV = Just (f t)
-    | otherwise = Nothing
-
-search :: Context -> Set.Set Term -> Set.Set (Set.Set Term)
-search ctx patterns = go (Set.toList patterns) where
-    go [] = Set.empty
-    go (x:xs) = Set.insert (getRelated EQUIV x ctx) (go xs) 
-
-piForm :: Set.Set Term
-piForm = Set.fromList [inType (X "A") U, Lambda "x" U] -- two terms, a type, and a lambda. The type refers to the type of the variable bound to the lambda expression.
-
 cnst :: String -> Term
 cnst s = Prim $ DefConst s
-
-inhabOne = cnst "⋆"
 
 wild = "𝑥"
 wildcard = X wild
@@ -637,8 +417,7 @@ typesIn xs a = Def a xs
 
 xsInType :: [String] -> String -> Term
 xsInType xs a = Def (cnst a) (go xs) where
-  go [] = []
-  go (x : xs) = X x : go xs
+  go = map X
 
 assocLaw0 :: Inductor
 assocLaw0 = Inductor (Pair (Pair U U) U) (\ (Pair (Pair a b) c) -> Pair a (Pair b c))
@@ -652,67 +431,8 @@ reflectLaw = Inductor (DefEq U U) (\(DefEq a b) -> DefEq b a)
 anyInhabOf :: Term -> Term
 anyInhabOf = Ap (Ap (Prim DefType) wildcard)
 
-anyCoprod :: Term
-anyCoprod = Coprod U U
-
-coprodType :: Term
-coprodType = Def anyCoprod [Inl U, Inr U]
-
-lambdaType :: Term
-lambdaType = Lambda wild U
-
-lambdaType2 :: Term
-lambdaType2 = Lambda wild lambdaType
-
-lambdaInductor :: Inductor 
-lambdaInductor = Inductor (Ap lambdaType U) beta
-
-piType :: Term
-piType =  Pi U U
-
-pairType :: Term
-pairType = Pair U U
-
-curryInductor :: Inductor
-curryInductor = Inductor (Ap lambdaType2 pairType) (\ (Ap (Lambda x (Lambda y f)) (Pair a b)) -> ((Lambda x (Lambda y f)) .$ a) .$ b)
-
 sigmaType :: Term
 sigmaType = Sigma U U
-
-zero :: Term
-zero = Def (Prim Zero) []
-
-zeroInductor :: Inductor
-zeroInductor = Inductor (Pi U zero) (\ (Pi c z) -> c)
-
-one :: Term
-one = Def (Prim One) [inhabOne, Lambda wild wildcard]
-
-oneInductor :: Inductor
-oneInductor = Inductor (Pi one U) (\ (Pi t c) -> c)
-
-two :: Term
-two = Def (Prim Two) [Coprod (cnst "𝟎") (cnst "𝟏")]
-
-nat :: Term
-nat = Def (Prim Nat) [cnst "0", Ap successor nat]
-
-successor :: Term
-successor = cnst "succ"
-
-false2 :: Term
-false2 = Inl (cnst "𝟎")
-
-true2 :: Term
-true2 = Inr (cnst "𝟏")
-
-natnum :: Int -> Term
-natnum 0 = cnst "0"
-natnum n = Ap successor (natnum (n-1))
-
-numnat :: Term -> Int 
-numnat (Ap (Prim (DefConst "succ")) n) = numnat n + 1
-numnat (Prim (DefConst "0")) = 0
 
 equivType :: Term
 equivType = Ident U U
@@ -723,99 +443,13 @@ identityFunctorLaw1 = Inductor (Ap U (Ident U U)) (\ (Ap a (Ident b c)) -> Ident
 identityFunctorLaw2 :: Inductor
 identityFunctorLaw2 = Inductor (Ap (Ident U U) U) (\ (Ap (Ident a b) c) -> Ident (a .$ c) (b .$ c) )
 
-alphaConversion :: Inductor
-alphaConversion = Inductor piType alphaReduce
-
-vble :: Context -> String -> Term -> Context
-vble ctx s t = intro ctx (Def t [X s])
-
-typeFamily :: Context -> String -> Term -> Term -> Context
-typeFamily ctx s a b = intro (intro ctx (Def a [X s])) (Def (Ap b a) [Ap b (X s)])
-
-piIntro :: Context -> String -> Term -> Term -> Context
-piIntro ctx s a b = intro (typeFamily ctx s a b) (Def (Pi a b) [Lambda s (Ap b (X s))])
-
-piPairInductor :: Inductor
-piPairInductor = Inductor (Pi (Pair U U) (Lambda wild U)) (\ (Pi (Pair x y) c) -> bind x (bind y (beta $ c .$ (Pair x y))))
-
-coprodRec :: Term
-coprodRec = cnst "coprod_rec"
-
-coprodRecursor :: Term -> Term -> Term -> Term
-coprodRecursor z g0 g1 = bind z (coprodRec .$ (Pair (Pair g0 g1) z))
-
-piCoprodInductor :: Inductor
-piCoprodInductor = Inductor (Pi (Coprod U U) (Lambda wild (Coprod U U))) (\ (Pi (Coprod x y) (Lambda z (Coprod g0 g1))) -> coprodRecursor (X z) (bind x $ beta ((Lambda z g0) .$ x)) (bind y $ beta ((Lambda z g1) .$ y)))
-
-piCoprodDef :: Term -> Term
-piCoprodDef (Ap (Prim (DefConst "coprod_rec")) (Pair (Pair g0 g1) (Coprod a b))) = Coprod (g0 .$ a) (g1 .$ b)
-piCoprodDef (Ap (Prim (DefConst "coprod_rec")) (Pair (Pair g0 g1) (Inl a))) = g0 .$ a
-piCoprodDef (Ap (Prim (DefConst "coprod_rec")) (Pair (Pair g0 g1) (Inr b))) = g1 .$ b
-
-coprodRecInductor :: Inductor
-coprodRecInductor = Inductor (coprodRec .$ Pair (Pair U U) (Coprod U U)) piCoprodDef
-
-indNat :: Term -> Term -> Term -> Term
-indNat c0 cs n = bind n (Ap (cnst "nat_ind") (tuple [c0, cs, n]))
-
 alpha :: Term -> Term -> Term
 alpha v t = bind v $ beta $ t .$ v
-
-indNatType :: Term
-indNatType = indNat U U nat
-
-natIndComp :: Term -> Term
-natIndComp (Ap (Prim (DefConst "nat_ind")) (Pair c0 (Pair cs (Prim (DefConst "0"))))) = c0
-natIndComp (Ap (Prim (DefConst "nat_ind")) (Pair c0 (Pair cs (Ap (Prim (DefConst "succ")) n)))) = Ap cs (Pair n (beta $ (indNat c0 cs (X "𝒏")) .$ n)) --(alpha (X "𝒏") (indNat c0 cs n))
-natIndComp (Ap (Prim (DefConst "nat_ind")) (Pair c0 (Pair cs n))) = Coprod c0 (Ap cs (Ap cs (Pair n (alpha (X "𝒏") (indNat c0 cs n))))) 
-natIndComp els = error $ show els
-
-natInductor :: Inductor
-natInductor = Inductor ((cnst "nat_ind") .$ Pair U (Pair U nat)) natIndComp
-
-piNatInductor :: Inductor
-piNatInductor = Inductor (Pi nat (Lambda wild (Coprod U U))) 
-    (\ (Pi nat (Lambda z (Coprod g0 g1))) -> bind (X "𝑛") (indNat (bind (indX 0) $ beta ((Lambda z g0) .$ (indX 0))) (bind (indX 1) $ beta ((Lambda z g1) .$ (indX 1))) (X "𝑛")))  
-
-
-typeTheory :: InductionTree
-typeTheory = insertAllMT emptyMT [zeroInductor, oneInductor,
-    reflectLaw, identityFunctorLaw1, identityFunctorLaw2,
-    assocLaw0, assocLaw1, alphaConversion, curryInductor,
-    prjLInd, prjRInd, 
-    lambdaInductor, piPairInductor, piCoprodInductor, piNatInductor, coprodRecInductor,
-    natInductor]
-
-ctxEmp :: Context
-ctxEmp = Ctx Set.empty emptyMT
-
-ctx0 :: Context
-ctx0 = newTypes ctxEmp [zero, one, two, nat, indNatType, piType, sigmaType, pairType, coprodType, equivType]
-
-ctx1 :: Context
-ctx1 = ctx0 <> Ctx Set.empty typeTheory
-
-indToTypes :: InductionTree -> [Term]
-indToTypes (Null) = []
-indToTypes (Node fs m l r) = Def m (indToTypes l) : indToTypes r
 
 typeTree :: Term -> Tree.Tree Term
 typeTree (Def t cs) = Tree.Node t (fmap typeTree cs)
 typeTree t = Tree.Node t []
 
-ctxType :: Context -> Term
-ctxType (Ctx set ind) = go (indToTypes ind) where
-  go [x] = x
-  go xs = Def U xs
-
-ctxTree :: Context -> Tree.Tree Term
-ctxTree ctx = typeTree $ ctxType ctx
-
 expr :: Int -> Term -> Term
-expr 0 t = bind (indX 0) (t .$ (indX 0))
-expr n t = bind (indX n) ((expr (n-1) t) .$ (indX n))
-
-tuple :: [Term] -> Term
-tuple [] = one
-tuple [t] = t
-tuple (t:ts) = Pair t (tuple ts)
+expr 0 t = bind (indX 0) (t .$ indX 0)
+expr n t = bind (indX n) (expr (n - 1) t .$ indX n)
