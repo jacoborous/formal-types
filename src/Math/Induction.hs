@@ -10,19 +10,6 @@ import qualified Data.Map.Strict as Map
 
 data InductionTree = Null | Node [Term -> Term] Term InductionTree InductionTree
 
-indToTree :: InductionTree -> Tree.Tree Term
-indToTree tree = (go tree) !! 0 where
-    go Null = []
-    go (Node [] t l r) = uniquesTree $ [Tree.Node t (go l)] ++ go r
-    go (Node f t l r) = uniquesTree $ [Tree.Node (go2 t) (go l)] ++ go r where
-        go2 t = go3 (fmap (\ x -> (x t)) f) where
-            go3 [m] = if t == m then t else Pi t m
-            go3 (m:ms) = if ((go3 ms) == (Pi t m)) then (Pi t m) else Pair (go3 ms) (Pi t m)
-
-uniquesTree :: [Tree.Tree Term] -> [Tree.Tree Term]
-uniquesTree [] = []
-uniquesTree (x:xs) = if elem x xs then xs else x : uniquesTree xs
-
 instance Show InductionTree where
     show tree = Tree.drawTree  $ fmap show $ indToTree tree
 
@@ -204,7 +191,7 @@ getTree (Ctx set tree) = tree
 isMemberOf :: Term -> InductionTree -> Bool
 isMemberOf t Null = False
 isMemberOf (Def t cs) (Node ms tt l r) 
-    | t == tt && (and $ fmap (tt ==) cs) = True
+    | t == tt && (and $ fmap (\x -> isMemberOf x l) cs) = True
     | otherwise = isMemberOf (Def t cs) l || isMemberOf (Def t cs) r 
 isMemberOf t (Node ms tt l r) 
     | t == tt = True
@@ -214,10 +201,7 @@ instance Show Context where
     show (Ctx types intree) = "context: \n" ++ show intree ++ "given types: \n" ++ show (insertAllMT emptyMT $ fmap toIdInd (Set.toList types)) 
 
 instance Semigroup InductionTree where
-    ind1 <> ind2 = go emptyMT (Set.toList (Set.fromList ((inductors ind1) ++ (inductors ind2)))) where
-        go ind [] = ind
-        go ind [x] = insertMT ind x
-        go ind (x:xs) = go (go ind [x]) xs where
+    ind1 <> ind2 = (insertAllMT emptyMT [toIdInd (treeType (indToTree ind1)), toIdInd (treeType (indToTree ind2))])
 
 instance Monoid InductionTree where
   mempty = emptyMT
@@ -229,14 +213,30 @@ instance Semigroup Context where
 instance Monoid Context where
     mempty = ctxEmp
 
+indToTree :: InductionTree -> Tree.Tree Term
+indToTree tree = (go tree) !! 0 where
+    go Null = []
+    go (Node [] t l r) = uniquesTree $ [Tree.Node t (go l)] ++ go r
+    go (Node f t l r) = uniquesTree $ [Tree.Node (go2 t) (go l)] ++ go r where
+        go2 t = go3 (fmap (\ x -> (x t)) f) where
+            go3 [m] = if t == m then t else Pi t m
+            go3 (m:ms) = if ((go3 ms) == (Pi t m)) then (Pi t m) else Pair (go3 ms) (Pi t m)
+
+uniquesTree :: [Tree.Tree Term] -> [Tree.Tree Term]
+uniquesTree [] = []
+uniquesTree (x:xs) = if elem x xs then xs else x : uniquesTree xs
+
 indToTypes :: InductionTree -> [Term]
 indToTypes (Null) = []
 indToTypes (Node fs m l r) = Def m (indToTypes l) : indToTypes r
 
-ctxType :: Context -> Term
-ctxType (Ctx set ind) = go (indToTypes ind) where
+indType :: InductionTree -> Term
+indType ind = go (indToTypes ind) where
   go [x] = x
   go xs = Def U xs
+
+ctxType :: Context -> Term
+ctxType (Ctx set ind) = indType ind
 
 termTree :: Context -> Tree.Tree Term
 termTree ctx = typeTree $ ctxType ctx

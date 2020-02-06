@@ -67,7 +67,9 @@ instance Show Term where
     show (Ap (Ap (Prim DefType) a) b) = "(" ++ show a ++ " " ++ show DefType ++ " " ++ show b ++ ")"
     show (Ident a b) = "(" ++ show a ++ " = " ++ show b ++ ")"
     show (Ap t u) = "(" ++ show t ++ " " ++ show u ++ ")"
-    show (Pi t u) = "∏(" ++ show t ++ ")(" ++ show u ++ ")"
+    show (Pi t u)
+      | Set.size (boundVars u) == 0 = show t ++ " -> " ++ show u
+      | otherwise = "∏(" ++ show t ++ ")(" ++ show u ++ ")"
     show (Sigma t u) = "∑(" ++ show t ++ ")(" ++ show u ++ ")"
     show (Prim p) = show p
     show (Def s cs) = show s
@@ -101,7 +103,8 @@ instance Eq Term where
     (Inr p) == (Inr q) = p == q
     U == U = True
     (Lambda s t) == (Lambda r u) = go (alphaReduce (Lambda s t)) (alphaReduce (Lambda r u)) where
-        go (Lambda s t) (Lambda r u) = t == u   
+        go (Lambda s t) (Lambda r u) = t == u
+        go a b = error $ show a ++ " and " ++ show b
     (Ap a b) == (Ap c d) = a == c && b == d
     (Sigma a b) == (Sigma c d) = a == c && b == d
     (Pi a b) == (Pi c d) = a == c && b == d
@@ -269,9 +272,9 @@ pureSub v m n = if v == m then n else go v m where
     go v (Def f cs) = Def (pureSub v f n) (fmap (\ x -> pureSub v x n) cs)
     go v (Inl a) = Inl (pureSub v a n)
     go v (Inr a) = Inr (pureSub v a n)
-    go (X x) (Lambda s t) 
+    go (X x) (Lambda s t)
         | x == s = bind n (go (X x) t)
-        | otherwise = Lambda s (go (X x) t) 
+        | otherwise = Lambda s (go (X x) t)
     go v m = m
 
 substitution :: Term -> Term -> Term -> Term
@@ -431,9 +434,6 @@ reflectLaw = Inductor (DefEq U U) (\(DefEq a b) -> DefEq b a)
 anyInhabOf :: Term -> Term
 anyInhabOf = Ap (Ap (Prim DefType) wildcard)
 
-sigmaType :: Term
-sigmaType = Sigma U U
-
 equivType :: Term
 equivType = Ident U U
 
@@ -449,6 +449,10 @@ alpha v t = bind v $ beta $ t .$ v
 typeTree :: Term -> Tree.Tree Term
 typeTree (Def t cs) = Tree.Node t (fmap typeTree cs)
 typeTree t = Tree.Node t []
+
+treeType :: Tree.Tree Term -> Term
+treeType (Tree.Node t []) = t
+treeType (Tree.Node t cs) = Def t (fmap treeType cs)
 
 expr :: Int -> Term -> Term
 expr 0 t = bind (indX 0) (t .$ indX 0)

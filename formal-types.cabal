@@ -22,7 +22,8 @@ library
     FormalTypes, 
     Math.Term,
     Math.Induction,
-    Math.Induction.PiType, 
+    Math.Induction.PiType,
+    Math.Induction.SigmaType,
     Math.Induction.CoprodType, 
     Math.Induction.NatType, 
     Math.Util

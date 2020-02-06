@@ -3,6 +3,7 @@ module FormalTypes (
   module Math.Util,
   module Math.Induction,
   module Math.Induction.PiType,
+  module Math.Induction.SigmaType,
   module Math.Induction.CoprodType, 
   module Math.Induction.NatType, 
   module Data.Set,
@@ -16,6 +17,7 @@ import Math.Term
 import Math.Util
 import Math.Induction
 import Math.Induction.PiType
+import Math.Induction.SigmaType
 import Math.Induction.CoprodType
 import Math.Induction.NatType
 import Data.Set (Set)
@@ -25,10 +27,10 @@ import qualified Data.Tree as Tree
 import qualified Data.Map.Strict as Map
 
 typeTheory :: InductionTree
-typeTheory = insertAllMT emptyMT $ natExposedInductors ++ piExposedInductors
+typeTheory = insertAllMT emptyMT $ natExposedInductors ++ piExposedInductors ++ sigmaExposedInductors
 
 ctx0 :: Context
-ctx0 = newTypes ctxEmp $ natExposedTypes ++ piExposedTypes
+ctx0 = newTypes ctxEmp $ natExposedTypes ++ piExposedTypes ++ sigmaExposedTypes
 
 ctx1 :: Context
 ctx1 = ctx0 <> Ctx Set.empty typeTheory
