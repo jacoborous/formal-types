@@ -66,12 +66,13 @@ instance Show Term where
     show (DefEq a b) = "(" ++ show a ++ " ≡ " ++ show b ++ ")"
     show (Ap (Ap (Prim DefType) a) b) = "(" ++ show a ++ " " ++ show DefType ++ " " ++ show b ++ ")"
     show (Ident a b) = "(" ++ show a ++ " = " ++ show b ++ ")"
-    show (Ap t u) = "(" ++ show t ++ " " ++ show u ++ ")"
+    show (Ap t u) = show t ++ " " ++ show u
     show (Pi t u)
-      | Set.size (boundVars u) == 0 = show t ++ " -> " ++ show u
+      | Set.disjoint (freeVars t) (freeVars u) = show t ++ " -> " ++ show u
       | otherwise = "∏(" ++ show t ++ ")(" ++ show u ++ ")"
     show (Sigma t u) = "∑(" ++ show t ++ ")(" ++ show u ++ ")"
     show (Prim p) = show p
+    show (Def s [X x]) = "(" ++ x ++ " : " ++ show s ++ ")"
     show (Def s cs) = show s
     {- show (Def s cs) = showDef (Def s cs) 1 where
         showDef (Def f cs) 0 = showDef f 0
@@ -245,6 +246,12 @@ subscript i
             | n `div` 10 == 0 = [n]
             | otherwise = splitInt (n `div` 10) ++ [n `mod` 10]
 
+etaConvert :: Term -> Term
+etaConvert t = go t (Set.toList $ freeVars t) 0 where
+    go t [] n = t
+    go t [x] n = pureSub x t (indX n)
+    go t (x:xs) n = go (pureSub x t (indX n)) xs (n+1)
+
 alphaReduce :: Term -> Term
 alphaReduce t = go t (Set.toList $ boundVars t) 0 where
     go t [] n = t
@@ -300,7 +307,7 @@ substitution v m n = if relation v m == EQUIV then n else go v m where
 
 freeVars :: Term -> Set.Set Term
 freeVars (X s) = Set.singleton (X s)
-freeVars (Def f cs) = freeVars f
+freeVars (Def f cs) = Set.union (freeVars f) (Set.unions (fmap freeVars cs))
 freeVars (Lambda s t) = Set.delete (X s) (freeVars t)
 freeVars (Pi t u) = freeVars u Set.\\ freeVars t
 freeVars (Sigma t u) = freeVars u Set.\\ freeVars t
@@ -315,7 +322,7 @@ freeVars _ = Set.empty
 
 boundVars :: Term -> Set.Set Term
 boundVars (X s) = Set.empty
-boundVars (Def f cs) = boundVars f
+boundVars (Def f cs) = Set.union (boundVars f) (Set.unions (fmap boundVars cs))
 boundVars (Lambda s t) = Set.union (Set.singleton (X s)) (boundVars t)
 boundVars (Pi t u) = Set.union (freeVars t) (boundVars u)
 boundVars (Sigma t u) = Set.union (freeVars t) (boundVars u)

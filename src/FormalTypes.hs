@@ -12,6 +12,7 @@ module FormalTypes (
   module Data.Tree,
   typeTheory,
   ctx0,
+  ctx0',
   ctx1,
 ) where
 
@@ -38,3 +39,6 @@ ctx0 = newTypes ctxEmp $ natExposedTypes ++ piExposedTypes ++ sigmaExposedTypes
 
 ctx1 :: Context
 ctx1 = ctx0 <> Ctx Set.empty typeTheory
+
+ctx0' :: InducTree (Tree.Tree Term)
+ctx0' = insert Init [zero, one, two, nat]
