@@ -7,11 +7,12 @@ import qualified Data.Set as Set
 import Data.Tree (Tree)
 import qualified Data.Tree as Tree 
 import qualified Data.Map.Strict as Map
+import Control.Applicative
 
 data InductionTree = Null | Node [Term -> Term] Term InductionTree InductionTree
 
 instance Show InductionTree where
-    show tree = Tree.drawTree  $ fmap show $ indToTree tree
+    show tree = Tree.drawTree (show <$> indToTree tree)
 
 inductors :: InductionTree -> [Inductor]
 inductors = go [] where
@@ -21,7 +22,7 @@ inductors = go [] where
 showMatches :: Term -> Context -> Set.Set Term
 showMatches t (Ctx ts intree) = go Set.empty t intree where
     go ls tt Null = ls
-    go ls tt (Node fs m l r) | tt <= m = Set.union (Set.fromList $ fmap (\ x -> if tt == (x tt) then tt else Pi (tt) (x tt)) fs) (Set.union (go ls tt l) (go ls tt r))
+    go ls tt (Node fs m l r) | tt <= m = Set.union (Set.fromList $ fmap (\ x -> if tt == x tt then tt else Pi tt (x tt)) fs) (Set.union (go ls tt l) (go ls tt r))
                              | otherwise = Set.union (go ls tt l) (go ls tt r)
 
 applyMatches :: Term -> Context -> Set.Set Term
@@ -79,7 +80,7 @@ lowestRank :: Set.Set Term -> Term
 lowestRank = minByFunc depth
 
 reduce :: Context -> Set.Set Term -> Set.Set Term 
-reduce ctx set = Set.singleton $ lowestRank $ (Set.fromList $ concatMap (Set.toList . pathInduction ctx) set)
+reduce ctx set = Set.singleton $ lowestRank $ Set.fromList $ concatMap (Set.toList . pathInduction ctx) set
 
 derive :: Context -> Context
 derive ctx = applyMorphs $ applyDefs ctx 
@@ -92,7 +93,7 @@ applyMorphs (Ctx types intree) = go (Set.toList types) where
 
 applyDefs :: Context -> Context
 applyDefs (Ctx types intree) = go (Set.toList types) where
-    go [] = (Ctx types intree)
+    go [] = Ctx types intree
     go [t] = newType t (Ctx types intree)
     go (t:ts) = newType t (go ts)
     
@@ -122,7 +123,7 @@ newType :: Term -> Context -> Context
 newType (Def s cs) (Ctx set ind) = Ctx set $ insertAllMT (insertMT ind (toIdInd (Def s cs))) (fmap toIdInd cs)
 newType (Ap (Ap (Prim DefType) a) b) ctx = newType newT ctx where
     newT = Def b [a]
-newType (DefEq x y) (Ctx set tree)  = newType (Def (Ident y y) [(DefEq x y)]) (Ctx set (insertAllMT tree [(Inductor x (const y)), (Inductor y (const x))]))
+newType (DefEq x y) (Ctx set tree)  = newType (Def (Ident y y) [DefEq x y]) (Ctx set (insertAllMT tree [Inductor x (const y), Inductor y (const x)]))
 newType x (Ctx set tree) = Ctx set (insertMT tree (toIdInd x))
 
 addTypes :: Context -> [Term] -> Context
@@ -191,7 +192,7 @@ getTree (Ctx set tree) = tree
 isMemberOf :: Term -> InductionTree -> Bool
 isMemberOf t Null = False
 isMemberOf (Def t cs) (Node ms tt l r) 
-    | t == tt && (and $ fmap (\x -> isMemberOf x l) cs) = True
+    | t == tt && and (fmap (`isMemberOf` l) cs) = True
     | otherwise = isMemberOf (Def t cs) l || isMemberOf (Def t cs) r 
 isMemberOf t (Node ms tt l r) 
     | t == tt = True

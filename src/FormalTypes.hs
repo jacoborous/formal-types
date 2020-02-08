@@ -2,10 +2,12 @@ module FormalTypes (
   module Math.Term,
   module Math.Util,
   module Math.Induction,
+  module Math.InducTree,
   module Math.Induction.PiType,
   module Math.Induction.SigmaType,
   module Math.Induction.CoprodType, 
   module Math.Induction.NatType, 
+  module Math.Induction.TypeMatch,
   module Data.Set,
   module Data.Tree,
   typeTheory,
@@ -16,10 +18,12 @@ module FormalTypes (
 import Math.Term
 import Math.Util
 import Math.Induction
+import Math.InducTree
 import Math.Induction.PiType
 import Math.Induction.SigmaType
 import Math.Induction.CoprodType
 import Math.Induction.NatType
+import Math.Induction.TypeMatch
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tree (Tree)

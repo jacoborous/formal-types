@@ -376,12 +376,6 @@ nary p xs = (Prim p) .$ (go xs) where
     go [x] = x
     go (x:xs) = x .$ (go xs) 
 
-instance Semigroup Term where
-    x <> y = Pair x y
-
-instance Monoid Term where
-    mempty = U
-
 processList :: [a -> a] -> a -> a
 processList fs a = foldl (\ a f -> f a) a fs  
  
