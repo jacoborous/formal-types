@@ -16,7 +16,7 @@ import Data.Semigroup
 import Data.List
 import Math.Util
 
-data Term = U | X String | Lambda String Term 
+data Term = U | X String | Lambda String Term | Var String Term
     | Ap Term Term | Pair Term Term | Coprod Term Term | Inl Term | Inr Term
     | Pi Term Term | Sigma Term Term | Ident Term Term | DefEq Term Term 
     | Prim PrimConst | Def Term [Term]
@@ -58,6 +58,7 @@ instance Show PrimConst where
 instance Show Term where
     show U = "𝓤"
     show (X s) = s
+    show (Var s t) = "(" ++ s ++ " : " ++ show t ++ ")"
     show (Lambda s t) = "λ" ++ s ++ "." ++ show t
     show (Pair a b) = "(" ++ show a ++ " , " ++ show b ++ ")"
     show (Coprod a b) = "(" ++ show a ++ " + " ++ show b ++ ")"
@@ -72,7 +73,6 @@ instance Show Term where
       | otherwise = "∏(" ++ show t ++ ")(" ++ show u ++ ")"
     show (Sigma t u) = "∑(" ++ show t ++ ")(" ++ show u ++ ")"
     show (Prim p) = show p
-    show (Def s [X x]) = "(" ++ x ++ " : " ++ show s ++ ")"
     show (Def s cs) = show s
     {- show (Def s cs) = showDef (Def s cs) 1 where
         showDef (Def f cs) 0 = showDef f 0
@@ -97,7 +97,10 @@ instance Eq Term where
     (X x) == (X y)
         | x == wild = True
         | y == wild = True
-        | otherwise = x == y 
+        | otherwise = x == y
+    (X x) == (Var s t) = x == s && t == U
+    (Var s t) == (X x) = x == s && t == U
+    (Var s t) == (Var u v) = s == u && t == v
     (Def x cs) == (Def y ds) = x == y
     (Prim p) == (Prim q) = p == q
     (Inl p) == (Inl q) = p == q
@@ -206,6 +209,8 @@ relation a b = if a == b then EQUIV else goRelation (alphaReduce a) (alphaReduce
         go SUPERTYPE EQUIV = SUPERTYPE
         go SUPERTYPE SUPERTYPE = SUPERTYPE
         go x y = NOTEQ
+    goRelation (DefEq a b) (Ident c d) = if (relation a c == EQUIV) && (relation b d == EQUIV) then SUBTYPE else NOTEQ
+    goRelation (Ident c d) (DefEq a b) = if (relation a c == EQUIV) && (relation b d == EQUIV) then SUPERTYPE else NOTEQ
     goRelation (Prim p) (Prim q)
         | p == q = EQUIV
         | otherwise = NOTEQ
@@ -215,7 +220,8 @@ relation a b = if a == b then EQUIV else goRelation (alphaReduce a) (alphaReduce
 
 depth :: Term -> Int
 depth U = 0
-depth (X s) = 1 
+depth (X s) = 1
+depth (Var s t) = 1 + depth t
 depth (Def f cs) = depth f
 depth (Lambda s t) = 1 + depth t 
 depth (Ap t u) = 2 + depth t + depth u
@@ -238,6 +244,9 @@ instance Ord Term where
 indX :: Int -> Term
 indX n = X $ "𝑥" ++ subscript n
 
+indV :: Int -> Term -> Term
+indV n t = Var ("𝑥" ++ subscript n) t
+
 subscript :: Int -> String
 subscript i 
     | i >= 0 && i < 10 = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"] !! i
@@ -249,19 +258,25 @@ subscript i
 etaConvert :: Term -> Term
 etaConvert t = go t (Set.toList $ freeVars t) 0 where
     go t [] n = t
-    go t [x] n = pureSub x t (indX n)
-    go t (x:xs) n = go (pureSub x t (indX n)) xs (n+1)
+    go t [X x] n = pureSub (X x) t (indX n)
+    go t [Var x U] n = pureSub (X x) t (indX n)
+    go t [Var s u] n = pureSub (Var s u) t (indV n u)
+    go t ((X x):xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
+    go t ((Var s u):xs) n = go (pureSub (Var s u) t (indV n u)) xs (n+1)
 
 alphaReduce :: Term -> Term
 alphaReduce t = go t (Set.toList $ boundVars t) 0 where
     go t [] n = t
-    go t [x] n = pureSub x t (indX n)
-    go t (x:xs) n = go (pureSub x t (indX n)) xs (n+1) 
+    go t [X x] n = pureSub (X x) t (indX n)
+    go t [Var x U] n = pureSub (X x) t (indX n)
+    go t [Var s u] n = pureSub (Var s u) t (indV n u)
+    go t ((X x):xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
+    go t ((Var s u):xs) n = go (pureSub (Var s u) t (indV n u)) xs (n+1)
 
 beta :: Term -> Term
-beta (Ap (Pi x m) n)
-    | Set.disjoint (freeVars n) (boundVars m) = substitution x m n
-    | otherwise = Ap (Pi x m) n
+beta (Ap (Pi (Var x a) m) n)
+    | Set.disjoint (freeVars n) (boundVars m) = substitution (Var x a) m n
+    | otherwise = Ap (Pi (Var x a) m) n
 beta (Ap (Lambda x m) n) 
     | Set.disjoint (freeVars n) (boundVars m) = substitution (X x) m n
     | otherwise = Ap (Lambda x m) n
@@ -279,6 +294,7 @@ pureSub v m n = if v == m then n else go v m where
     go v (Def f cs) = Def (pureSub v f n) (fmap (\ x -> pureSub v x n) cs)
     go v (Inl a) = Inl (pureSub v a n)
     go v (Inr a) = Inr (pureSub v a n)
+    go v (Var s a) = Var s (pureSub v a n)
     go (X x) (Lambda s t)
         | x == s = bind n (go (X x) t)
         | otherwise = Lambda s (go (X x) t)
@@ -302,11 +318,12 @@ substitution v m n = if relation v m == EQUIV then n else go v m where
     go v (Def f cs) = Def (substitution v f n) (fmap (\ x -> substitution v x n) cs)
     go (X x) (Lambda s t) 
         | x == s = Lambda s t
-        | otherwise = Lambda s (go (X x) t) 
+        | otherwise = Lambda s (go (X x) t)
     go v m = m
 
 freeVars :: Term -> Set.Set Term
-freeVars (X s) = Set.singleton (X s)
+freeVars (X s) = Set.singleton (Var s U)
+freeVars (Var x a) = Set.singleton (Var x a)
 freeVars (Def f cs) = Set.union (freeVars f) (Set.unions (fmap freeVars cs))
 freeVars (Lambda s t) = Set.delete (X s) (freeVars t)
 freeVars (Pi t u) = freeVars u Set.\\ freeVars t
@@ -322,10 +339,11 @@ freeVars _ = Set.empty
 
 boundVars :: Term -> Set.Set Term
 boundVars (X s) = Set.empty
+boundVars (Var x a) = Set.empty
 boundVars (Def f cs) = Set.union (boundVars f) (Set.unions (fmap boundVars cs))
-boundVars (Lambda s t) = Set.union (Set.singleton (X s)) (boundVars t)
-boundVars (Pi t u) = Set.union (freeVars t) (boundVars u)
-boundVars (Sigma t u) = Set.union (freeVars t) (boundVars u)
+boundVars (Lambda s t) = Set.union (Set.singleton (Var s U)) (boundVars t)
+boundVars (Pi (Var s t) u) = Set.union (Set.singleton (Var s t)) (boundVars u)
+boundVars (Sigma (Var s t) u) = Set.union (Set.singleton (Var s t)) (boundVars u)
 boundVars (Ap t u) = Set.union (boundVars t) (boundVars u)
 boundVars (Pair t u) = Set.union (boundVars t) (boundVars u)
 boundVars (Coprod t u) = Set.union (boundVars t) (boundVars u)
@@ -340,9 +358,10 @@ bind (X x) expr
     | Set.member (X x) (freeVars expr) = Lambda x expr
     | Set.member (X x) (boundVars expr) = expr
     | otherwise = Lambda x expr
-bind t expr
-    | Set.disjoint (boundVars t) (freeVars expr) = Pi t expr
-    | otherwise = expr
+bind (Var x a) expr
+    | Set.member (Var x a) (freeVars expr) = Pi (Var x a) expr
+    | Set.member (Var x a) (boundVars expr) = expr
+    | otherwise = Pi (Var x a) expr
 
 (|->) :: Term -> Term -> Term
 t |-> expr = bind t expr
@@ -360,7 +379,8 @@ x .= y = DefEq x y
 x ~= y = Ident x y
 
 (.:) :: Term -> Term -> Term
-a .: b = Ap (Ap (Prim DefType) a) b
+(X x) .: t = Var x t
+a .: b = Def b [a]
 
 refl :: Term -> Term
 refl = unary Refl

@@ -13,12 +13,16 @@ import Control.Applicative
 import Data.Maybe
 
 patternMatch :: Term -> Tree.Tree Term -> [Tree.Tree Term]
+--patternMatch (Ap x y) tree = fmap unroll (zipWith (\x -> \y -> Ap x y) (fmap roll (patternMatch x tree)) (fmap roll (patternMatch y tree)))
 patternMatch t tree = removeU $ go (etaConvert t) tree where
     go :: Term -> Tree.Tree Term -> Tree.Tree Term
-    go (Def a [X x]) (Tree.Node y xs)
+    go (Var x a) (Tree.Node y xs)
         | relation a y == EQUIV = mergeConcat (xs >>= (patternMatch (X x)))
-        | otherwise = mergeConcat (xs >>= (patternMatch (Def a [X x])))
+        | otherwise = mergeConcat (xs >>= (patternMatch (Var x a)))
     go (X x) tree = tree
+    go (Ap x (Var v a)) (Tree.Node (Ap c d) xs)
+        | relation c x == EQUIV = mergeConcat (xs >>= (patternMatch (Var v a)))
+        | otherwise = mergeConcat (xs >>= (patternMatch (Ap x (Var v a))))
     go t (Tree.Node x xs) 
         | relation t x == EQUIV = Tree.Node x xs
         | otherwise = mergeConcat (xs >>= (patternMatch t))
@@ -33,6 +37,25 @@ removeU t = [t]
 isType :: InducTree (Tree.Tree Term) -> Term -> Term -> Bool
 isType ctx t u = go (match ctx t) (match ctx u) where
   go a b = or $ zipWith (isSubTree') (fmap eval a) (fmap eval b)
+
+{-relate :: InducTree (Tree.Tree Term) -> Term -> Tree.Tree (Term, TypeRel)
+relate ctx t = go t SUBTYPE (eval ctx)  where
+  go t d (Tree.Node x xs)
+    | relation t x == EQUIV = Tree.Node (x, EQUIV) (fmap (go t SUPERTYPE) xs)
+    | otherwise = Tree.Node (x, (go2 subtrees d)) subtrees where
+      subtrees = (fmap (go t d) xs)
+      go2 subtrees d = if or (fmap hasEquiv subtrees) then SUBTYPE else (if d == SUPERTYPE then SUPERTYPE else NOTEQ) where
+        hasEquiv (Tree.Node (x, EQUIV) xs) = True
+        hasEquiv (Tree.Node (x, r) []) = False
+        hasEquiv (Tree.Node (x, r) xs) = or (fmap hasEquiv xs)
+
+compare2 :: InducTree (Tree.Tree Term) -> Term -> Term -> Maybe TypeRel
+compare2 ctx a b = go [relate ctx a] where
+  go [] = Nothing
+  go [Tree.Node (x, r) []] = if x == b then Just r else Nothing
+  go [Tree.Node (x, r) xs] = if x == b then Just r else go xs
+  go (x:xs) = if go [x] /= Nothing then go [x] else go xs-}
+
 
 -- compare e.g. (x * y + c) to ("A" * "A" + ?) ; will match only if x and y are equal.
 -- procedure: traverse both expressions. if one is a var type, create a new set with its
