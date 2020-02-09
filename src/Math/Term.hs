@@ -174,8 +174,13 @@ relation a b = if a == b then EQUIV else goRelation (alphaReduce a) (alphaReduce
         | x == wild || y == wild = EQUIV
         | x == y = EQUIV
         | otherwise = NOTEQ
-    goRelation (X x) y = NOTEQ
-    goRelation y (X x) = NOTEQ
+    goRelation (X x) y = SUPERTYPE
+    goRelation y (X x) = SUBTYPE
+    goRelation (Var s t) (Var u v)
+        | relation t v == EQUIV = if s == u then EQUIV else NOTEQ
+        | otherwise = NOTEQ
+    goRelation x (Var s t) = relation x t
+    goRelation (Var s t) x = relation t x
     goRelation (Lambda s t) (Lambda x b) = go2 (alphaReduce (Lambda s t)) (alphaReduce (Lambda x b)) where
         go2 (Lambda i j) (Lambda k l) = goRelation j l
     goRelation (Lambda s t) (Pi (X x) b) = relation (Lambda s t) (Lambda x b)

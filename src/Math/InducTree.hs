@@ -57,8 +57,7 @@ eval (Roll t) = go t where
 eval (Unroll (Def f fs)) = Tree.Node f (fmap (eval . Unroll) fs)
 eval (Unroll x) = Tree.Node x []
 eval (Intro a b) = go a (eval b) where
-    go (Def f fs) tree = mergeTrees (eval $ Unroll (Def f fs)) tree
-    go t tree = mergeTrees (Tree.Node t []) tree
+    go t tree = mergeTrees tree (unroll t)
 eval (Merge a b) = mergeTrees (eval a) (eval b)
 eval (Reduce (Left a)) = eval $ Unroll a
 eval (Reduce (Right b)) = b
@@ -84,35 +83,41 @@ mergeConcat (x:xs) = mergeTrees x (mergeConcat xs)
 unify :: Tree.Tree Term -> Tree.Tree Term
 unify (Tree.Node a as) = Tree.Node a (go as) where
   go [] = []
-  go xs = fmap unify (subunify xs)
+  go xs = fmap unify (subunify (Cntxt $ Tree.Node a as) xs)
 
-subunify :: [Tree.Tree Term] -> [Tree.Tree Term]
-subunify [] = []
-subunify [x] = [x]
-subunify (x:y:xs) = uniques $ (go x y) ++ subunify xs where
-  go (Tree.Node a []) (Tree.Node b [])
-     | relation a b == EQUIV = [Tree.Node a []]
-     | relation a b == SUBTYPE = [Tree.Node b [Tree.Node a []]]
-     | relation a b == SUPERTYPE = [Tree.Node a [Tree.Node b []]]
-     | otherwise = [Tree.Node a [], Tree.Node b []]
-  go (Tree.Node a as) (Tree.Node b [])
-     | compare2 (Cntxt (Tree.Node a as)) a b == Just EQUIV || relation a b == EQUIV = [Tree.Node a as]
-     | compare2 (Cntxt (Tree.Node a as)) a b == Just SUBTYPE || relation a b == SUBTYPE = [Tree.Node b [Tree.Node a as]]
-     | compare2 (Cntxt (Tree.Node a as)) a b == Just SUPERTYPE || relation a b == SUPERTYPE = [Tree.Node a (Tree.Node b [] : as)]
-     | otherwise = [Tree.Node a as, Tree.Node b []]
-  go (Tree.Node a []) (Tree.Node b bs)
-     | compare2 (Cntxt (Tree.Node b bs)) a b == Just EQUIV || relation a b == EQUIV = [Tree.Node b bs]
-     | compare2 (Cntxt (Tree.Node b bs)) a b == Just SUBTYPE || relation a b == SUBTYPE = [Tree.Node b (Tree.Node a [] : bs)]
-     | compare2 (Cntxt (Tree.Node b bs)) a b == Just SUPERTYPE || relation a b == SUPERTYPE = [Tree.Node a [Tree.Node b bs]]
-     | otherwise = [Tree.Node a [], Tree.Node b bs]
-  go (Tree.Node a as) (Tree.Node b bs)
-     | compare2 (Cntxt (Tree.Node b bs)) a b == Just EQUIV || compare2 (Cntxt (Tree.Node a as)) a b == Just EQUIV || relation a b == EQUIV = [Tree.Node a (concatMap (uncurry go) (zip as bs))]
-     | compare2 (Cntxt (Tree.Node b bs)) a b == Just SUBTYPE || compare2 (Cntxt (Tree.Node a as)) a b == Just SUBTYPE || relation a b == SUBTYPE = [Tree.Node b (concatMap (go (Tree.Node a as)) bs)]
-     | compare2 (Cntxt (Tree.Node b bs)) a b == Just SUPERTYPE || compare2 (Cntxt (Tree.Node a as)) a b == Just SUPERTYPE || relation a b == SUPERTYPE = [Tree.Node a (concatMap (go (Tree.Node b bs)) as)]
-     | otherwise = [Tree.Node a as, Tree.Node b bs]
+seqZip :: [a] -> [(a, a)]
+seqZip [] = []
+seqZip [x, y] = [(x, y)]
+seqZip (x:y:xs) = (x, y) : seqZip (y:xs)
+
+subunify :: InducTree (Tree.Tree Term) -> [Tree.Tree Term] -> [Tree.Tree Term]
+subunify ctx xs = subunify' ctx (uniques xs) where
+  subunify' ctx [] = []
+  subunify' ctx [x] = [x]
+  subunify' ctx (x:y:xs) = (go x y) ++ subunify' ctx xs where
+    go (Tree.Node a []) (Tree.Node b [])
+       | compare2 ctx a b == Just EQUIV || relation a b == EQUIV = [Tree.Node a []]
+       | compare2 ctx a b == Just SUBTYPE || relation a b == SUBTYPE = [Tree.Node b [Tree.Node a []]]
+       | compare2 ctx a b == Just SUPERTYPE || relation a b == SUPERTYPE = [Tree.Node a [Tree.Node b []]]
+       | otherwise = [Tree.Node a [], Tree.Node b []]
+    go (Tree.Node a as) (Tree.Node b [])
+       | compare2 ctx a b == Just EQUIV || relation a b == EQUIV = [Tree.Node a (subunify' ctx as)]
+       | compare2 ctx a b == Just SUBTYPE || relation a b == SUBTYPE = [Tree.Node b [Tree.Node a (subunify' ctx as)]]
+       | compare2 ctx a b == Just SUPERTYPE || relation a b == SUPERTYPE = [Tree.Node a (Tree.Node b [] : subunify' ctx as)]
+       | otherwise = [Tree.Node a (subunify' ctx as), Tree.Node b []]
+    go (Tree.Node a []) (Tree.Node b bs)
+       | compare2 ctx a b == Just EQUIV || relation a b == EQUIV = [Tree.Node b (subunify' ctx bs)]
+       | compare2 ctx a b == Just SUBTYPE || relation a b == SUBTYPE = [Tree.Node b (Tree.Node a [] : subunify' ctx bs)]
+       | compare2 ctx a b == Just SUPERTYPE || relation a b == SUPERTYPE = [Tree.Node a [Tree.Node b (subunify' ctx bs)]]
+       | otherwise = [Tree.Node a [], Tree.Node b (subunify' ctx bs)]
+    go (Tree.Node a as) (Tree.Node b bs)
+       | compare2 ctx a b == Just EQUIV || relation a b == EQUIV = [Tree.Node a (subunify' ctx (as ++ bs))]
+       | compare2 ctx a b == Just SUBTYPE || relation a b == SUBTYPE = [Tree.Node b (concatMap (go (Tree.Node a (subunify' ctx as))) (subunify' ctx bs))]
+       | compare2 ctx a b == Just SUPERTYPE || relation a b == SUPERTYPE = [Tree.Node a (concatMap (go (Tree.Node b (subunify' ctx bs))) (subunify' ctx as))]
+       | otherwise = [Tree.Node a (subunify' ctx as), Tree.Node b (subunify' ctx bs)]
 
 mergeTrees :: Tree.Tree Term -> Tree.Tree Term -> Tree.Tree Term
-mergeTrees (Tree.Node a as) (Tree.Node b bs) = unify $ go $ uniques $ subunify [Tree.Node a as, Tree.Node b bs] where
+mergeTrees (Tree.Node a as) (Tree.Node b bs) = unify $ go $ uniques $ subunify (Cntxt $ Tree.Node a as) $ subunify (Cntxt $ Tree.Node b bs) [Tree.Node a as, Tree.Node b bs] where
     go [t] = t
     go ts = Tree.Node U ts
 
@@ -140,6 +145,22 @@ relate ctx t = go t SUBTYPE (eval ctx)  where
         hasEquiv (Tree.Node (x, r) xs) = or (fmap hasEquiv xs)
 
 compare2 :: InducTree (Tree.Tree Term) -> Term -> Term -> Maybe TypeRel
+compare2 ctx (Ap a b) (Ap c d) = go (compare2 ctx a c) (compare2 ctx b d) where
+  go Nothing _ = Nothing
+  go _ Nothing = Nothing
+  go (Just EQUIV) (Just SUBTYPE) = Just SUBTYPE
+  go (Just EQUIV) (Just EQUIV) = Just EQUIV
+  go (Just EQUIV) (Just SUPERTYPE) = Just SUPERTYPE
+  go _ _ = Just NOTEQ
+compare2 ctx (Pair a b) (Pair c d) = go (compare2 ctx a c) (compare2 ctx b d) where
+  go Nothing _ = Nothing
+  go _ Nothing = Nothing
+  go (Just SUBTYPE) (Just SUBTYPE) = Just SUBTYPE
+  go (Just EQUIV) (Just EQUIV) = Just EQUIV
+  go (Just SUPERTYPE) (Just SUPERTYPE) = Just SUPERTYPE
+  go _ _ = Just NOTEQ
+compare2 ctx a (Var s t) = compare2 ctx a t
+compare2 ctx (Var s t) a = compare2 ctx t a
 compare2 ctx a b = go [relate ctx a] where
   go [] = Nothing
   go [Tree.Node (x, r) []] = if x == b then Just r else Nothing
