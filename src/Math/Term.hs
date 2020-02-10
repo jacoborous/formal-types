@@ -329,7 +329,8 @@ substitution v m n = if relation v m == EQUIV then n else go v m where
 freeVars :: Term -> Set.Set Term
 freeVars (X s) = Set.singleton (Var s U)
 freeVars (Var x a) = Set.singleton (Var x a)
-freeVars (Def f cs) = Set.union (freeVars f) (Set.unions (fmap freeVars cs))
+freeVars (Def f cd) = freeVars f
+--freeVars (Def f cs) = Set.union (freeVars f) (Set.unions (fmap freeVars cs))
 freeVars (Lambda s t) = Set.delete (X s) (freeVars t)
 freeVars (Pi t u) = freeVars u Set.\\ freeVars t
 freeVars (Sigma t u) = freeVars u Set.\\ freeVars t
@@ -345,7 +346,8 @@ freeVars _ = Set.empty
 boundVars :: Term -> Set.Set Term
 boundVars (X s) = Set.empty
 boundVars (Var x a) = Set.empty
-boundVars (Def f cs) = Set.union (boundVars f) (Set.unions (fmap boundVars cs))
+boundVars (Def f cd) = boundVars f
+--boundVars (Def f cs) = Set.union (boundVars f) (Set.unions (fmap boundVars cs))
 boundVars (Lambda s t) = Set.union (Set.singleton (Var s U)) (boundVars t)
 boundVars (Pi (Var s t) u) = Set.union (Set.singleton (Var s t)) (boundVars u)
 boundVars (Sigma (Var s t) u) = Set.union (Set.singleton (Var s t)) (boundVars u)

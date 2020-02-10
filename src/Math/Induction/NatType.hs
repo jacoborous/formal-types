@@ -59,7 +59,7 @@ pi2Inductor :: Inductor
 pi2Inductor = Inductor pi2Type pi2Comp
 
 nat :: Term
-nat = Def (Prim Nat) [cnst "0", Ap (cnst "succ") (Prim Nat)]
+nat = Def (Prim Nat) [cnst "0", Ap (cnst "succ") nat]
 
 successor :: Term
 successor = Lambda wild (Ap (cnst "succ") wildcard)
