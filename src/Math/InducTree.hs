@@ -54,10 +54,9 @@ eval (Cntxt tree) = tree
 eval (Roll t) = go t where
     go (Tree.Node x []) = x
     go (Tree.Node x xs) = Def x (fmap go xs)
-eval (Unroll (Def f fs)) = Tree.Node f (fmap (eval . Unroll) fs)
-eval (Unroll x) = Tree.Node x []
+eval (Unroll x) = unfoldRec x
 eval (Intro a b) = go a (eval b) where
-    go t tree = mergeTrees tree (unroll t)
+    go t tree = mergeTrees (unroll t) tree
 eval (Merge a b) = mergeTrees (eval a) (eval b)
 eval (Reduce (Left a)) = eval $ Unroll a
 eval (Reduce (Right b)) = b
@@ -68,17 +67,47 @@ roll tree = eval (Roll tree)
 unroll :: Term -> Tree.Tree Term
 unroll t = eval (Unroll t)
 
+extract1 :: Term -> Tree.Tree Term
+extract1 (Def f fs) = Tree.Node f []
+extract1 f = Tree.Node f []
+
+unfoldRec :: Term -> Tree.Tree Term
+unfoldRec (Def f fs) = Tree.Node f (go (Def f fs) fs) where
+  go g gs = if elem g (gs ++ concatMap subterms gs) then (fmap extract1 gs) else fmap unfoldRec gs
+unfoldRec t = Tree.Node t []
+
+subterms :: Term -> [Term]
+subterms t = uniques (go t) where
+  go (Def f fs) = go f
+  go (Ap a b) = go a ++ go b
+  go (Pi a b) = go a ++ go b
+  go (Sigma a b) = go a ++ go b
+  go (Pair a b) = go a ++ go b
+  go (Ident a b) = go a ++ go b
+  go (DefEq a b) = go a ++ go b
+  go (Coprod a b) = (fmap Inl $ go a) ++ (fmap Inr $ go b)
+  go (Lambda a b) = go b
+  go (Inl a) = go a
+  go (Inr a) = go a
+  go (Var s x) = go x
+  go (X x) = []
+  go x = [x]
+
 merge :: Tree.Tree Term -> Tree.Tree Term -> Tree.Tree Term
 merge a b = eval (Merge (Cntxt a) (Cntxt b))
 
 insert :: InducTree (Tree.Tree Term) -> [Term] -> InducTree (Tree.Tree Term)
-insert tree [] = tree
-insert tree (x:xs) = insert (Intro x tree) xs
+insert tree xs = clean (go tree xs) where
+  go tree [] = tree
+  go tree (x:xs) = go (Intro x tree) xs
 
 mergeConcat :: [Tree.Tree Term] -> Tree.Tree Term
 mergeConcat [] = eval Init
 mergeConcat [x] = x
 mergeConcat (x:xs) = mergeTrees x (mergeConcat xs)
+
+clean :: InducTree (Tree.Tree Term) -> InducTree (Tree.Tree Term)
+clean ctx = Cntxt ((unify . eval) ctx)
 
 unify :: Tree.Tree Term -> Tree.Tree Term
 unify (Tree.Node a as) = Tree.Node a (go as) where
@@ -121,6 +150,9 @@ mergeTrees (Tree.Node a as) (Tree.Node b bs) = unify $ go $ uniques $ subunify (
     go [t] = t
     go ts = Tree.Node U ts
 
+exists :: InducTree (Tree.Tree Term) -> Term -> Bool
+exists ctx t = isSubTree (unroll t) (eval ctx)
+
 isSubTree :: Tree.Tree Term -> Tree.Tree Term -> Bool
 isSubTree t1 t2
   | t1 == t2 = True
@@ -145,6 +177,37 @@ relate ctx t = go t SUBTYPE (eval ctx)  where
         hasEquiv (Tree.Node (x, r) xs) = or (fmap hasEquiv xs)
 
 compare2 :: InducTree (Tree.Tree Term) -> Term -> Term -> Maybe TypeRel
+compare2 ctx (Def f cs) (Def g ds)
+  | compare2 ctx f g == Just NOTEQ = go $ fmap (compare2 ctx (Def f cs)) ds
+  | otherwise = compare2 ctx f g where
+      go y
+          | or (fmap (== Just EQUIV) y) = Just SUBTYPE
+          | or (fmap (== Just SUBTYPE) y) = Just SUBTYPE
+          | otherwise = go $ fmap (compare2 ctx (Def g ds)) cs where
+              go y
+                  | or (fmap (== Just EQUIV) y) = Just SUPERTYPE
+                  | or (fmap (== Just SUBTYPE) y) = Just SUPERTYPE
+                  | otherwise = Just NOTEQ
+compare2 ctx (Def f cs) x
+  | compare2 ctx f x == Just NOTEQ = go $ fmap (compare2 ctx x) cs
+  | otherwise = compare2 ctx f x where
+      go y
+          | or (fmap (== Just EQUIV) y) = Just SUPERTYPE
+          | or (fmap (== Just SUBTYPE) y) = Just SUPERTYPE
+          | otherwise = Just NOTEQ
+compare2 ctx x (Def f cs)
+  | compare2 ctx x f == Just NOTEQ = go $ fmap (compare2 ctx x) cs
+  | otherwise = compare2 ctx x f where
+      go y
+          | or (fmap (== Just EQUIV) y) = Just SUBTYPE
+          | or (fmap (== Just SUBTYPE) y) = Just SUBTYPE
+          | otherwise = Just NOTEQ
+compare2 ctx (Lambda s x) (Lambda t y) = go (alphaReduce (Lambda s x)) (alphaReduce (Lambda t y)) where
+  go (Lambda a b) (Lambda c d) = compare2 ctx b d
+compare2 ctx (Pi a b) (Lambda s x) = compare2 ctx (alphaReduce $ Pi a b) (alphaReduce $ Pi (X s) x)
+compare2 ctx (Lambda s x) (Pi a b) = compare2 ctx (alphaReduce $ Pi (X s) x) (alphaReduce $ Pi a b)
+compare2 ctx (Pi a b) (Pi c d) = go (alphaReduce (Pi a b)) (alphaReduce (Pi c d)) where
+  go (Pi x y) (Pi z w) = compare2 ctx (Ap x y) (Ap z w)
 compare2 ctx (Ap a b) (Ap c d) = go (compare2 ctx a c) (compare2 ctx b d) where
   go Nothing _ = Nothing
   go _ Nothing = Nothing
@@ -161,8 +224,11 @@ compare2 ctx (Pair a b) (Pair c d) = go (compare2 ctx a c) (compare2 ctx b d) wh
   go _ _ = Just NOTEQ
 compare2 ctx a (Var s t) = compare2 ctx a t
 compare2 ctx (Var s t) a = compare2 ctx t a
-compare2 ctx a b = go [relate ctx a] where
-  go [] = Nothing
-  go [Tree.Node (x, r) []] = if x == b then Just r else Nothing
-  go [Tree.Node (x, r) xs] = if x == b then Just r else go xs
-  go (x:xs) = if go [x] /= Nothing then go [x] else go xs
+compare2 ctx a b = if a == b then Just EQUIV else go2 (go [relate ctx a] b) where
+  go [] b = Nothing
+  go [Tree.Node (x, r) []] b = if x == b then Just r else Nothing
+  go [Tree.Node (x, r) xs] b = if x == b then Just r else go xs b
+  go (x:xs) b = if go [x] b /= Nothing then go [x] b else go xs b
+  go2 Nothing = go [relate ctx b] a
+  go2 x = x
+
