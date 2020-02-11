@@ -7,7 +7,7 @@ import Math.Util
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Tree (Tree)
-import qualified Data.Tree as Tree 
+import qualified Data.Tree as Tree
 import qualified Data.Map.Strict as Map
 import Control.Applicative
 import Data.Maybe
@@ -21,6 +21,9 @@ data InducTree a where
     Intro :: Term -> InducTree (Tree.Tree Term) -> InducTree (Tree.Tree Term)
     Merge :: InducTree (Tree.Tree Term) -> InducTree (Tree.Tree Term) -> InducTree (Tree.Tree Term)
     Reduce :: Either Term (Tree.Tree Term) -> InducTree (Tree.Tree Term)
+
+showTree :: (Show a) => Tree.Tree a -> IO ()
+showTree tree = putStrLn $ Tree.drawTree (fmap show tree)
 
 instance Show a => Show (InducTree a) where
     show (TType t) = show t
@@ -166,15 +169,22 @@ isSubTree' t1 t2
     go t1 (Tree.Node x xs) = or (fmap (isSubTree t1) xs)
 
 relate :: InducTree (Tree.Tree Term) -> Term -> Tree.Tree (Term, TypeRel)
-relate ctx t = go t SUBTYPE (eval ctx)  where
-  go t d (Tree.Node x xs)
-    | relation t x == EQUIV = Tree.Node (x, EQUIV) (fmap (go t SUPERTYPE) xs)
-    | otherwise = Tree.Node (x, (go2 subtrees d)) subtrees where
-      subtrees = (fmap (go t d) xs)
-      go2 subtrees d = if or (fmap hasEquiv subtrees) then SUBTYPE else (if d == SUPERTYPE then SUPERTYPE else NOTEQ) where
-        hasEquiv (Tree.Node (x, EQUIV) xs) = True
-        hasEquiv (Tree.Node (x, r) []) = False
-        hasEquiv (Tree.Node (x, r) xs) = or (fmap hasEquiv xs)
+relate ctx t = go (fmap (\x -> (x, relation t x)) (eval ctx))  where
+  go :: Tree.Tree (Term, TypeRel) -> Tree.Tree (Term, TypeRel)
+  go (Tree.Node (x, EQUIV) xs) = Tree.Node (x, EQUIV) (go2 xs) where
+    go2 :: [Tree.Tree (Term, TypeRel)] -> [Tree.Tree (Term, TypeRel)]
+    go2 [] = []
+    go2 [Tree.Node (x, r) xs] = [Tree.Node (x, SUPERTYPE) (go2 xs)]
+    go2 (x:xs) = (go2 [x]) ++ (go2 xs)
+  go (Tree.Node (x, NOTEQ) xs) = if (go2 xs) then Tree.Node (x, SUBTYPE) (fmap go xs) else Tree.Node (x, NOTEQ) (fmap go xs) where
+    go2 :: [Tree.Tree (Term, TypeRel)] -> Bool
+    go2 [] = False
+    go2 [Tree.Node (x, EQUIV) xs] = True
+    go2 [Tree.Node (x, SUBTYPE) xs] = True
+    go2 [x] = False
+    go2 (x:xs) = go2 [x] || go2 xs
+  go (Tree.Node (x, r) xs) = Tree.Node (x, r) (fmap go xs)
+
 
 compare2 :: InducTree (Tree.Tree Term) -> Term -> Term -> Maybe TypeRel
 compare2 ctx (Def f cs) (Def g ds)
@@ -224,11 +234,14 @@ compare2 ctx (Pair a b) (Pair c d) = go (compare2 ctx a c) (compare2 ctx b d) wh
   go _ _ = Just NOTEQ
 compare2 ctx a (Var s t) = compare2 ctx a t
 compare2 ctx (Var s t) a = compare2 ctx t a
-compare2 ctx a b = if a == b then Just EQUIV else go2 (go [relate ctx a] b) where
-  go [] b = Nothing
-  go [Tree.Node (x, r) []] b = if x == b then Just r else Nothing
-  go [Tree.Node (x, r) xs] b = if x == b then Just r else go xs b
-  go (x:xs) b = if go [x] b /= Nothing then go [x] b else go xs b
-  go2 Nothing = go [relate ctx b] a
-  go2 x = x
+compare2 ctx a b
+  | exists ctx a = go b (relate ctx a)
+  | exists ctx b = flip $ go a (relate ctx b)
+  | otherwise = Nothing where
+    go t (Tree.Node (x, r) xs) = if t == x then Just r else go2 t xs where
+      go2 t [] = Nothing
+      go2 t (x:xs) = if go t x == Nothing then go2 t xs else go t x
+    flip (Just SUPERTYPE) = Just SUBTYPE
+    flip (Just SUBTYPE) = Just SUPERTYPE
+    flip x = x
 
