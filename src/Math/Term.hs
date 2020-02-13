@@ -250,7 +250,7 @@ indX :: Int -> Term
 indX n = X $ "𝑥" ++ subscript n
 
 indV :: Int -> Term -> Term
-indV n t = Var ("𝑥" ++ subscript n) t
+indV n = Var ("𝑥" ++ subscript n)
 
 subscript :: Int -> String
 subscript i 
@@ -266,8 +266,8 @@ etaConvert t = go t (Set.toList $ freeVars t) 0 where
     go t [X x] n = pureSub (X x) t (indX n)
     go t [Var x U] n = pureSub (X x) t (indX n)
     go t [Var s u] n = pureSub (Var s u) t (indV n u)
-    go t ((X x):xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
-    go t ((Var s u):xs) n = go (pureSub (Var s u) t (indV n u)) xs (n+1)
+    go t (X x : xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
+    go t (Var s u : xs) n = go (pureSub (Var s u) t (indV n u)) xs (n+1)
 
 alphaReduce :: Term -> Term
 alphaReduce t = go t (Set.toList $ boundVars t) 0 where
@@ -275,8 +275,8 @@ alphaReduce t = go t (Set.toList $ boundVars t) 0 where
     go t [X x] n = pureSub (X x) t (indX n)
     go t [Var x U] n = pureSub (X x) t (indX n)
     go t [Var s u] n = pureSub (Var s u) t (indV n u)
-    go t ((X x):xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
-    go t ((Var s u):xs) n = go (pureSub (Var s u) t (indV n u)) xs (n+1)
+    go t (X x : xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
+    go t (Var s u : xs) n = go (pureSub (Var s u) t (indV n u)) xs (n+1)
 
 beta :: Term -> Term
 beta (Ap (Pi (Var x a) m) n)
@@ -402,13 +402,13 @@ unary :: PrimConst -> Term -> Term
 unary p = Ap (Prim p)
 
 binary :: PrimConst -> Term -> Term -> Term
-binary p x y = (Prim p) .$ x .$ y
+binary p x y = Prim p .$ x .$ y
 
 nary :: PrimConst -> [Term] -> Term
-nary p [] = (Prim p)
-nary p xs = (Prim p) .$ (go xs) where
+nary p [] = Prim p
+nary p xs = Prim p .$ go xs where
     go [x] = x
-    go (x:xs) = x .$ (go xs) 
+    go (x:xs) = x .$ go xs 
 
 processList :: [a -> a] -> a -> a
 processList fs a = foldl (\ a f -> f a) a fs  
@@ -417,7 +417,7 @@ toIdInd :: Term -> Inductor
 toIdInd (Pi a b) 
     | a == b = Inductor a id
     | otherwise = Inductor (Pi a b) id 
-toIdInd t = Inductor t (id) --id
+toIdInd t = Inductor t id --id
 
 uniquejoin :: Ord a => [a] -> [a]
 uniquejoin x = Set.toList $ Set.fromList x

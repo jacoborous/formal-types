@@ -26,7 +26,7 @@ lambdaInductor :: Inductor
 lambdaInductor = Inductor (Ap lambdaType U) beta
 
 curryFunc :: Term -> Term
-curryFunc (Ap (Lambda x (Lambda y f)) (Pair a b)) = ((Lambda x (Lambda y f)) .$ a) .$ b
+curryFunc (Ap (Lambda x (Lambda y f)) (Pair a b)) = (Lambda x (Lambda y f) .$ a) .$ b
 curryFunc els = error $ show els
 
 curryInductor :: Inductor
