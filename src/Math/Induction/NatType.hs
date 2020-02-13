@@ -59,14 +59,14 @@ pi2Inductor :: Inductor
 pi2Inductor = Inductor pi2Type pi2Comp
 
 nat :: Term
-nat = Def (Prim Nat) [cnst "0", Ap successor nat]
+nat = Def (Prim Nat) [cnst "0", Ap (cnst "succ") nat]
 
 successor :: Term
-successor = cnst "succ"
+successor = Lambda wild (Ap (cnst "succ") wildcard)
 
 natnum :: Int -> Term
 natnum 0 = cnst "0"
-natnum n = Ap successor (natnum (n-1))
+natnum n = Ap (cnst "succ") (natnum (n-1))
 
 numnat :: Term -> Int 
 numnat (Ap (Prim (DefConst "succ")) n) = numnat n + 1

@@ -13,3 +13,8 @@ minByFunc f = foldr1 (minGo f) where
 
 uniques :: Ord a => [a] -> [a]
 uniques = Set.toList . Set.fromList
+
+seqZip :: [a] -> [(a, a)]
+seqZip [] = []
+seqZip [x, y] = [(x, y)]
+seqZip (x:y:xs) = (x, y) : seqZip (y:xs)
