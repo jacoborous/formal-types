@@ -2,6 +2,7 @@ module FormalTypes (
   module Math.Term,
   module Math.Util,
   module Math.InducTree,
+  module Math.Induction.IdentityType,
   module Math.Induction.PiType,
   module Math.Induction.SigmaType,
   module Math.Induction.CoprodType, 
@@ -15,6 +16,7 @@ module FormalTypes (
 import Math.Term
 import Math.Util
 import Math.InducTree
+import Math.Induction.IdentityType
 import Math.Induction.PiType
 import Math.Induction.SigmaType
 import Math.Induction.CoprodType

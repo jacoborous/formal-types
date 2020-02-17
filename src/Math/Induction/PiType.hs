@@ -13,7 +13,7 @@ piExposedTypes :: [Term]
 piExposedTypes = [lambdaType, lambdaType2, piType, pairType]
 
 piExposedInductors :: [Inductor]
-piExposedInductors = [lambdaInductor, curryInductor, alphaConversion, piPairInductor, prjLInd, prjRInd]
+piExposedInductors = [lambdaInductor, curryInductor, piPairInductor, prjLInd, prjRInd]
 
 lambdaType :: Term
 lambdaType = Lambda wild U
@@ -36,9 +36,6 @@ curryFunc els = error $ show els
 
 curryInductor :: Inductor
 curryInductor = Inductor (Ap lambdaType2 pairType) curryFunc
-
-alphaConversion :: Inductor
-alphaConversion = Inductor piType alphaReduce
 
 piPairInductor :: Inductor
 piPairInductor = Inductor (Pi (Pair U U) (Lambda wild U)) (\ (Pi (Pair x y) c) -> bind x (bind y (beta $ c .$ (Pair x y))))  

@@ -21,8 +21,8 @@ library
   exposed-modules:     
     FormalTypes, 
     Math.Term,
-    --Math.Induction,
     Math.InducTree,
+    Math.Induction.IdentityType,
     Math.Induction.PiType,
     Math.Induction.SigmaType,
     Math.Induction.CoprodType, 

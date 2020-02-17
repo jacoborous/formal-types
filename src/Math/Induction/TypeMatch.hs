@@ -83,14 +83,13 @@ typeFormerTree (Inl a) = Tree.Node (Inl a) [typeFormerTree a]
 typeFormerTree (Inr a) = Tree.Node (Inr a) [typeFormerTree a]
 
 varToFunc :: InducTree (Tree.Tree Term) -> Term -> Term -> Bool
-varToFunc ctx (Var t s) = \ x -> isType ctx x s 
+varToFunc ctx (Var t s) = \ x -> isType ctx x s
 
-{- data Constructor a where
+data Constructor a where
     C :: String -> [Constructor Term] -> Constructor Term
     Set :: Term -> Term -> Constructor Term
     Variable :: String -> Term -> Constructor Term
-    AppR :: Term -> Constructor (Term -> Term)
-    AppL :: Term -> Constructor (Term -> Term)
+    Apply :: InducTree (Tree.Tree Term) -> Term -> [Term] -> Constructor Term
     Function :: Term -> Term -> Constructor Term
     Family :: String -> Term -> Constructor Term
     ForAll :: String -> Term -> Term -> Constructor Term
@@ -115,8 +114,11 @@ form (Bind (X x) a b)
 form (Subst e r m) = substitution m e r
 form (Define f d) = \ x -> form (Subst x d f)
 form (Identity (Ident a b)) = form $ Define a b
-form (AppR t) = \ x -> Ap t x
-form (AppL t) = \ x -> Ap x t
+form (Apply ctx f args) = go (arity f) args where
+  go [] [] = f
+  go (m:ms) (x:xs) = if compare2 ctx x m == Just SUBTYPE then form (Apply ctx (beta $ f .$ x) xs) else error $ "Illegal argument exception: " ++ show m ++ ", given: " ++ show x
+  go [] xs = error "Too many arguments given."
+  go ms [] = error "Too few arguments given."
 
 instance Show a => Show (Constructor a) where
-    show a = show $ form a -}
+    show a = show $ form a
