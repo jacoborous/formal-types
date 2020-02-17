@@ -1,4 +1,8 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE DataKinds #-}
 
 module Math.InducTree where
 
@@ -58,7 +62,7 @@ eval (Roll t) = go t where
     go (Tree.Node x []) = x
     go (Tree.Node x xs) = Def x (fmap go xs)
 eval (Unroll x) = unfoldRec x
-eval (Intro a b) = eval $ insert b a
+eval (Intro a b) = eval $ intro b a
 eval (Merge a b) = mergeTrees (eval a) (eval b)
 eval (Reduce (Left a)) = eval $ Unroll a
 eval (Reduce (Right b)) = b
@@ -98,8 +102,8 @@ subterms t = uniques (go t) where
 merge :: Tree.Tree Term -> Tree.Tree Term -> Tree.Tree Term
 merge a b = eval (Merge (Cntxt a) (Cntxt b))
 
-insert :: InducTree (Tree.Tree Term) -> Term -> InducTree (Tree.Tree Term)
-insert ctx t = if exists ctx t then ctx else Cntxt $ go t (eval ctx) (relate ctx t) where
+intro :: InducTree (Tree.Tree Term) -> Term -> InducTree (Tree.Tree Term)
+intro ctx t = if exists ctx t then ctx else Cntxt $ go t (eval ctx) (relate ctx t) where
   go :: Term -> Tree.Tree Term -> Tree.Tree (Term, TypeRel) -> Tree.Tree Term
   go x (Tree.Node t ts) (Tree.Node (s, r) xs) 
     | r == SUBTYPE && and (fmap noSubtypeBelow xs) = Tree.Node s (unroll x : fmap pullEm xs)
@@ -110,9 +114,9 @@ insert ctx t = if exists ctx t then ctx else Cntxt $ go t (eval ctx) (relate ctx
       noSubtypeBelow (Tree.Node (s, r) []) = r /= SUBTYPE
       noSubtypeBelow (Tree.Node (s, r) xs) = (r /= SUBTYPE) && and (fmap noSubtypeBelow xs) 
 
-inserts :: InducTree (Tree.Tree Term) -> [Term] -> InducTree (Tree.Tree Term)
-inserts tree [] = tree
-inserts tree xs = foldl insert tree xs
+intros :: InducTree (Tree.Tree Term) -> [Term] -> InducTree (Tree.Tree Term)
+intros tree [] = tree
+intros tree xs = foldl intro tree xs
 
 mergeConcat :: [Tree.Tree Term] -> Tree.Tree Term
 mergeConcat [] = eval Init

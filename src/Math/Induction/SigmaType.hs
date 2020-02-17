@@ -1,7 +1,6 @@
 module Math.Induction.SigmaType where
 
 import Math.Term
-import Math.Induction
 import Math.Induction.PiType
 import Math.Util
 

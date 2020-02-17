@@ -1,7 +1,8 @@
+{-# LANGUAGE GADTs #-}
+
 module Math.Induction.TypeMatch where
 
 import Math.Term
-import Math.Induction
 import Math.InducTree
 import Math.Util
 import Data.Set (Set)
@@ -65,3 +66,57 @@ matchVarTypes (Tree.Node a xs) (Tree.Node b ys) = if a == b then checkValid (tra
         | Map.size map == 0 = True
         | otherwise = Map.foldr f True map where
             f ts v = v && (Set.size ts == 1)
+
+typeFormerTree :: Term -> Tree.Tree Term
+typeFormerTree (X x) = Tree.Node (X x) []
+typeFormerTree (Var x s) = Tree.Node (Var x s) []
+typeFormerTree (Prim p) = Tree.Node (Prim p) []
+typeFormerTree (Lambda s t) = Tree.Node (Lambda s t) [typeFormerTree (X s), typeFormerTree t]
+typeFormerTree (Pi a b) = Tree.Node (Pi a b) [typeFormerTree a, typeFormerTree b]
+typeFormerTree (Sigma a b) = Tree.Node (Sigma a b) [typeFormerTree a, typeFormerTree b]
+typeFormerTree (Pair a b) = Tree.Node (Pair a b) [typeFormerTree a, typeFormerTree b]
+typeFormerTree (Coprod a b) = Tree.Node (Coprod a b) [typeFormerTree a, typeFormerTree b]
+typeFormerTree (Ap a b) = Tree.Node (Ap a b) [typeFormerTree a, typeFormerTree b]
+typeFormerTree (Ident a b) = Tree.Node (Ident a b) [typeFormerTree a, typeFormerTree b]
+typeFormerTree (DefEq a b) = Tree.Node (DefEq a b) [typeFormerTree a, typeFormerTree b]
+typeFormerTree (Inl a) = Tree.Node (Inl a) [typeFormerTree a]
+typeFormerTree (Inr a) = Tree.Node (Inr a) [typeFormerTree a]
+
+varToFunc :: InducTree (Tree.Tree Term) -> Term -> Term -> Bool
+varToFunc ctx (Var t s) = \ x -> isType ctx x s 
+
+{- data Constructor a where
+    C :: String -> [Constructor Term] -> Constructor Term
+    Set :: Term -> Term -> Constructor Term
+    Variable :: String -> Term -> Constructor Term
+    AppR :: Term -> Constructor (Term -> Term)
+    AppL :: Term -> Constructor (Term -> Term)
+    Function :: Term -> Term -> Constructor Term
+    Family :: String -> Term -> Constructor Term
+    ForAll :: String -> Term -> Term -> Constructor Term
+    ThereExists :: String -> Term -> Term -> Constructor Term
+    Bind :: Term -> Term -> Term -> Constructor Term
+    Subst :: Term -> Term -> Term -> Constructor Term
+    Define :: Term -> Term -> Constructor (Term -> Term)
+    Identity :: Term -> Constructor (Term -> Term)
+
+form :: Constructor a -> a
+form (C s xs) = foldl (.$) (cnst s) (fmap form xs)
+form (Set a b) = Def b [a]
+form (Variable s t) = Var s t
+form (Function a b) = Pi a b
+form (Family x b) = Lambda x (Ap b (X x))
+form (ForAll x a b) = Pi (Var x a) (Ap b (X x))
+form (ThereExists x a b) = Pair a (beta $ (form $ ForAll x a b) .$ a) --elim
+form (Bind (X x) a b) 
+    | Set.member (X x) (freeVars b) = if a == U then Lambda x b else Pi (Var x a) b
+    | Set.member (X x) (boundVars b) = error $ "Variable " ++ show (X x) ++ " already bound in " ++ show b 
+    | otherwise = b
+form (Subst e r m) = substitution m e r
+form (Define f d) = \ x -> form (Subst x d f)
+form (Identity (Ident a b)) = form $ Define a b
+form (AppR t) = \ x -> Ap t x
+form (AppL t) = \ x -> Ap x t
+
+instance Show a => Show (Constructor a) where
+    show a = show $ form a -}

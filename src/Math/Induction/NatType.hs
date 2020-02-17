@@ -1,7 +1,6 @@
 module Math.Induction.NatType where
 
 import Math.Term
-import Math.Induction
 import Math.Util
 
 natExposedTypes :: [Term]

@@ -1,7 +1,12 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE DataKinds #-}
+
 module Math.Induction.PiType where
 
 import Math.Term
-import Math.Induction
 import Math.Util
 
 piExposedTypes :: [Term]
@@ -17,7 +22,7 @@ lambdaType2 :: Term
 lambdaType2 = Lambda wild lambdaType
 
 piType :: Term
-piType =  Pi U U
+piType =  Def (Pi U U) [lambdaType]
 
 pairType :: Term
 pairType = Pair U U

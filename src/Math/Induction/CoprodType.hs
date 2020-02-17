@@ -1,7 +1,6 @@
 module Math.Induction.CoprodType where
 
 import Math.Term
-import Math.Induction
 import Math.Util
 
 anyCoprod :: Term

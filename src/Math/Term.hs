@@ -74,24 +74,6 @@ instance Show Term where
     show (Sigma t u) = "∑(" ++ show t ++ ")(" ++ show u ++ ")"
     show (Prim p) = show p
     show (Def s cs) = show s
-    {- show (Def s cs) = showDef (Def s cs) 1 where
-        showDef (Def f cs) 0 = showDef f 0
-        showDef (DefEq t u) 0 = "(" ++ (showDef t 0 ) ++ " ≡ " ++ (showDef u 0 ) ++ ")"
-        showDef (Ap (Ap (Prim DefType) t) u) 0 = "(" ++ (showDef t 0 ) ++ " " ++ show DefType ++ " " ++ (showDef u 0 ) ++ ")"
-        showDef (Sigma t u) 0 = "∑(" ++ (showDef t 0 ) ++ ")(" ++ (showDef u 0 ) ++ ")"
-        showDef (Pi t u) 0 = "∏(" ++ (showDef t 0 ) ++ ")(" ++ (showDef u 0 ) ++ ")"
-        showDef (Ident t u) 0 = "(" ++ (showDef t 0 ) ++ " = " ++ (showDef u 0 ) ++ ")"
-        showDef (Coprod t u) 0 = "(" ++ (showDef t 0 ) ++ " + " ++ (showDef u 0 ) ++ ")"
-        showDef (Inl a) 0 = "Inl " ++ showDef a 0
-        showDef (Inr a) 0 = "Inr " ++ showDef a 0
-        showDef (Pair t u) 0 = "(" ++ (showDef t 0 ) ++ " , " ++ (showDef u 0 ) ++ ")"
-        showDef (Ap t u) 0 = "(" ++ (showDef t 0 ) ++ " " ++ (showDef u 0 ) ++ ")"
-        showDef (Lambda s u) 0 = "λ" ++ s ++ "." ++ (showDef u 0 )
-        showDef (X s) 0 = s
-        showDef (Prim p) 0 = show p
-        showDef U 0 = show U
-        showDef (Def f []) 1 = showDef f 0 
-        showDef (Def f cs) 1 = "([" ++ concat (intersperse "," (fmap (\ x -> showDef x 0) cs)) ++ "] : " ++ showDef f 0 ++ ")" -}
 
 instance Eq Term where
     (X x) == (X y)
@@ -249,9 +231,6 @@ instance Ord Term where
 indX :: Int -> Term
 indX n = X $ "𝑥" ++ subscript n
 
-indV :: Int -> Term -> Term
-indV n = Var ("𝑥" ++ subscript n)
-
 subscript :: Int -> String
 subscript i 
     | i >= 0 && i < 10 = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"] !! i
@@ -264,23 +243,17 @@ etaConvert :: Term -> Term
 etaConvert t = go t (Set.toList $ freeVars t) 0 where
     go t [] n = t
     go t [X x] n = pureSub (X x) t (indX n)
-    go t [Var x U] n = pureSub (X x) t (indX n)
-    go t [Var s u] n = pureSub (Var s u) t (indV n u)
     go t (X x : xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
-    go t (Var s u : xs) n = go (pureSub (Var s u) t (indV n u)) xs (n+1)
 
 alphaReduce :: Term -> Term
 alphaReduce t = go t (Set.toList $ boundVars t) 0 where
     go t [] n = t
     go t [X x] n = pureSub (X x) t (indX n)
-    go t [Var x U] n = pureSub (X x) t (indX n)
-    go t [Var s u] n = pureSub (Var s u) t (indV n u)
     go t (X x : xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
-    go t (Var s u : xs) n = go (pureSub (Var s u) t (indV n u)) xs (n+1)
 
 beta :: Term -> Term
 beta (Ap (Pi (Var x a) m) n)
-    | Set.disjoint (freeVars n) (boundVars m) = substitution (Var x a) m n
+    | Set.disjoint (freeVars n) (boundVars m) = substitution (X x) m n
     | otherwise = Ap (Pi (Var x a) m) n
 beta (Ap (Lambda x m) n) 
     | Set.disjoint (freeVars n) (boundVars m) = substitution (X x) m n
@@ -327,10 +300,9 @@ substitution v m n = if relation v m == EQUIV then n else go v m where
     go v m = m
 
 freeVars :: Term -> Set.Set Term
-freeVars (X s) = Set.singleton (Var s U)
-freeVars (Var x a) = Set.singleton (Var x a)
+freeVars (X s) = Set.singleton (X s)
+freeVars (Var x a) = Set.singleton (X x)
 freeVars (Def f cd) = freeVars f
---freeVars (Def f cs) = Set.union (freeVars f) (Set.unions (fmap freeVars cs))
 freeVars (Lambda s t) = Set.delete (X s) (freeVars t)
 freeVars (Pi t u) = freeVars u Set.\\ freeVars t
 freeVars (Sigma t u) = freeVars u Set.\\ freeVars t
@@ -347,10 +319,9 @@ boundVars :: Term -> Set.Set Term
 boundVars (X s) = Set.empty
 boundVars (Var x a) = Set.empty
 boundVars (Def f cd) = boundVars f
---boundVars (Def f cs) = Set.union (boundVars f) (Set.unions (fmap boundVars cs))
-boundVars (Lambda s t) = Set.union (Set.singleton (Var s U)) (boundVars t)
-boundVars (Pi (Var s t) u) = Set.union (Set.singleton (Var s t)) (boundVars u)
-boundVars (Sigma (Var s t) u) = Set.union (Set.singleton (Var s t)) (boundVars u)
+boundVars (Lambda s t) = Set.union (Set.singleton (X s)) (boundVars t)
+boundVars (Pi (Var s t) u) = Set.union (Set.singleton (X s)) (boundVars u)
+boundVars (Sigma (Var s t) u) = Set.union (Set.singleton (X s)) (boundVars u)
 boundVars (Ap t u) = Set.union (boundVars t) (boundVars u)
 boundVars (Pair t u) = Set.union (boundVars t) (boundVars u)
 boundVars (Coprod t u) = Set.union (boundVars t) (boundVars u)
@@ -366,8 +337,8 @@ bind (X x) expr
     | Set.member (X x) (boundVars expr) = expr
     | otherwise = Lambda x expr
 bind (Var x a) expr
-    | Set.member (Var x a) (freeVars expr) = Pi (Var x a) expr
-    | Set.member (Var x a) (boundVars expr) = expr
+    | Set.member (X x) (freeVars expr) = Pi (Var x a) expr
+    | Set.member (X x) (boundVars expr) = expr
     | otherwise = Pi (Var x a) expr
 
 (|->) :: Term -> Term -> Term
