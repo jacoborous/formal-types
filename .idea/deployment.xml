@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" serverName="ubuntu-ec2">
+  <component name="PublishConfigData" serverName="44.233.85.173">
     <serverData>
-      <paths name="ubuntu-ec2">
+      <paths name="44.233.85.173">
         <serverdata>
           <mappings>
-            <mapping deploy="/haskell/formal-types" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/dev/formal-types" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

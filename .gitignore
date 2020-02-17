@@ -1,7 +1,11 @@
 # Created by .ignore support plugin (hsz.mobi)
-.gitignore
-.stack-work
-.idea
 dist
 dist-newstyle
 formal-types.iml
+*.o
+*.hi
+.idea
+.stack-work
+.ghc.environment.x86_64-mingw32-8.6.5
+cabal.project.local
+stack.yaml.lock
