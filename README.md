@@ -8,7 +8,7 @@ function the way these concepts are understood in mathematics.
 
 References
 =========
-[Intuitionistic Type Theory](https://plato.stanford.edu/archives/spr2020/entries/type-theory-intuitionistic/)
+[Intuitionistic Type Theory](https://plato.stanford.edu/entries/type-theory-intuitionistic/)
 
     author       =	Dybjer, Peter and Palmgren, Erik,
     title        =	Intuitionistic Type Theory
