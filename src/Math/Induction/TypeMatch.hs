@@ -3,7 +3,7 @@
 module Math.Induction.TypeMatch where
 
 import Math.Term
-import Math.InducTree
+import Math.Context
 import Math.Util
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -13,8 +13,11 @@ import qualified Data.Map.Strict as Map
 import Control.Applicative
 import Data.Maybe
 
+shallowMatch :: Context (Tree.Tree Term) -> Term -> [Term]
+shallowMatch ctx t = fmap roll (patternMatch t (eval ctx))
+
 patternMatch :: Term -> Tree.Tree Term -> [Tree.Tree Term]
-patternMatch t tree = removeU $ go (etaConvert t) tree where
+patternMatch t tree = removeU $ go t tree where
     go :: Term -> Tree.Tree Term -> Tree.Tree Term
     go (Var x a) (Tree.Node y xs)
         | compare2 (Cntxt tree) a y == Just EQUIV = mergeConcat (xs >>= (patternMatch (X x)))
@@ -24,11 +27,10 @@ patternMatch t tree = removeU $ go (etaConvert t) tree where
         | compare2 (Cntxt tree) t x == Just EQUIV = Tree.Node x xs
         | otherwise = mergeConcat (xs >>= (patternMatch t))
 
-
-matchPair :: InducTree (Tree.Tree Term) -> (Term -> Term -> Term) -> Term -> Term -> [InducTree (Tree.Tree Term)]
+matchPair :: Context (Tree.Tree Term) -> (Term -> Term -> Term) -> Term -> Term -> [Context (Tree.Tree Term)]
 matchPair tree f a b = Cntxt <$> ([(uncurry f) (x, y) | x <- fmap (roll . eval) (match tree a), y <- fmap (roll . eval) (match tree b)] >>= (\x -> patternMatch x (eval tree)))
 
-match :: InducTree (Tree.Tree Term) -> Term -> [InducTree (Tree.Tree Term)]
+match :: Context (Tree.Tree Term) -> Term -> [Context (Tree.Tree Term)]
 match tree (Pair x y) = matchPair tree Pair x y
 match tree (Ap x y) = matchPair tree Ap x y
 match tree (Coprod x y) = matchPair tree Coprod x y
@@ -42,7 +44,7 @@ removeU :: Tree.Tree Term -> [Tree.Tree Term]
 removeU (Tree.Node U xs) = xs
 removeU t = [t]
 
-isType :: InducTree (Tree.Tree Term) -> Term -> Term -> Bool
+isType :: Context (Tree.Tree Term) -> Term -> Term -> Bool
 isType ctx t u = go (match ctx t) (match ctx u) where
   go a b = or $ zipWith (isSubTree') (fmap eval a) (fmap eval b)
 
@@ -82,43 +84,7 @@ typeFormerTree (DefEq a b) = Tree.Node (DefEq a b) [typeFormerTree a, typeFormer
 typeFormerTree (Inl a) = Tree.Node (Inl a) [typeFormerTree a]
 typeFormerTree (Inr a) = Tree.Node (Inr a) [typeFormerTree a]
 
-varToFunc :: InducTree (Tree.Tree Term) -> Term -> Term -> Bool
+varToFunc :: Context (Tree.Tree Term) -> Term -> Term -> Bool
 varToFunc ctx (Var t s) = \ x -> isType ctx x s
 
-data Constructor a where
-    C :: String -> [Constructor Term] -> Constructor Term
-    Set :: Term -> Term -> Constructor Term
-    Variable :: String -> Term -> Constructor Term
-    Apply :: InducTree (Tree.Tree Term) -> Term -> [Term] -> Constructor Term
-    Function :: Term -> Term -> Constructor Term
-    Family :: String -> Term -> Constructor Term
-    ForAll :: String -> Term -> Term -> Constructor Term
-    ThereExists :: String -> Term -> Term -> Constructor Term
-    Bind :: Term -> Term -> Term -> Constructor Term
-    Subst :: Term -> Term -> Term -> Constructor Term
-    Define :: Term -> Term -> Constructor (Term -> Term)
-    Identity :: Term -> Constructor (Term -> Term)
 
-form :: Constructor a -> a
-form (C s xs) = foldl (.$) (cnst s) (fmap form xs)
-form (Set a b) = Def b [a]
-form (Variable s t) = Var s t
-form (Function a b) = Pi a b
-form (Family x b) = Lambda x (Ap b (X x))
-form (ForAll x a b) = Pi (Var x a) (Ap b (X x))
-form (ThereExists x a b) = Pair a (beta $ (form $ ForAll x a b) .$ a) --elim
-form (Bind (X x) a b) 
-    | Set.member (X x) (freeVars b) = if a == U then Lambda x b else Pi (Var x a) b
-    | Set.member (X x) (boundVars b) = error $ "Variable " ++ show (X x) ++ " already bound in " ++ show b 
-    | otherwise = b
-form (Subst e r m) = substitution m e r
-form (Define f d) = \ x -> form (Subst x d f)
-form (Identity (Ident a b)) = form $ Define a b
-form (Apply ctx f args) = go (arity f) args where
-  go [] [] = f
-  go (m:ms) (x:xs) = if compare2 ctx x m == Just SUBTYPE then form (Apply ctx (beta $ f .$ x) xs) else error $ "Illegal argument exception: " ++ show m ++ ", given: " ++ show x
-  go [] xs = error "Too many arguments given."
-  go ms [] = error "Too few arguments given."
-
-instance Show a => Show (Constructor a) where
-    show a = show $ form a

@@ -1,7 +1,16 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module FormalTypes (
   module Math.Term,
   module Math.Util,
-  module Math.InducTree,
+  module Math.Context,
+  module Math.Former,
+  module Math.Induction.Induction,
   module Math.Induction.IdentityType,
   module Math.Induction.PiType,
   module Math.Induction.SigmaType,
@@ -15,7 +24,9 @@ module FormalTypes (
 
 import Math.Term
 import Math.Util
-import Math.InducTree
+import Math.Context
+import Math.Former
+import Math.Induction.Induction
 import Math.Induction.IdentityType
 import Math.Induction.PiType
 import Math.Induction.SigmaType
@@ -28,5 +39,5 @@ import Data.Tree (Tree)
 import qualified Data.Tree as Tree 
 import qualified Data.Map.Strict as Map
 
-ctx0 :: InducTree (Tree.Tree Term)
+ctx0 :: Context (Tree.Tree Term)
 ctx0 = intros Init [zero, one, two, nat]

@@ -2,6 +2,7 @@ module Math.Induction.IdentityType where
 
 import Math.Term
 import Math.Util
+import Math.Former
 
 path1 :: Term -> Term -> Term
 path1 a b = bind (Var "x" a) (Ident (X "x") b)

@@ -21,7 +21,9 @@ library
   exposed-modules:     
     FormalTypes, 
     Math.Term,
-    Math.InducTree,
+    Math.Context,
+    Math.Former,
+    Math.Induction.Induction,
     Math.Induction.IdentityType,
     Math.Induction.PiType,
     Math.Induction.SigmaType,
@@ -30,7 +32,7 @@ library
     Math.Induction.TypeMatch,
     Math.Util
   -- other-modules:
-  other-extensions:    GADTs, MultiParamTypeClasses, TypeFamilies, PolyKinds, DataKinds
+  other-extensions:    GADTs, MultiParamTypeClasses, TypeFamilies, PolyKinds, DataKinds, AllowAmbiguousTypes
   build-depends:       base ^>=4.13.0.0, containers ^>=0.6.0.1
   hs-source-dirs:      src
   default-language:    Haskell2010

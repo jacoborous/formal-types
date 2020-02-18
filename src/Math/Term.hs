@@ -244,6 +244,8 @@ etaConvert t = go t (Set.toList $ freeVars t) 0 where
     go t [] n = t
     go t [X x] n = pureSub (X x) t (indX n)
     go t (X x : xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
+    go t [Var x a] n = pureSub (Var x a) t (indX n) where
+    go t ((Var x a) : xs) n = go (pureSub (Var x a) t (indX n)) xs (n+1)
 
 alphaReduce :: Term -> Term
 alphaReduce t = go t (Set.toList $ boundVars t) 0 where
@@ -253,19 +255,43 @@ alphaReduce t = go t (Set.toList $ boundVars t) 0 where
     go t [Var x a] n = pureSub (Var x a) t (indX n) where
     go t ((Var x a) : xs) n = go (pureSub (Var x a) t (indX n)) xs (n+1)
 
+typeMap :: (Term -> Term) -> Term -> Term
+typeMap f (Var s t) = f $ Var s (typeMap f t)
+typeMap f (Def x cs) = f $ Def (typeMap f x) (fmap (typeMap f) cs)
+typeMap f (Lambda s t) = f $ Lambda s (typeMap f t)
+typeMap f (Ap t u) = f (Ap (typeMap f t) (typeMap f u))
+typeMap f (Pair t u) = f $ Pair (typeMap f t) (typeMap f u)
+typeMap f (Coprod t u) = f $ Coprod (typeMap f t) (typeMap f u)
+typeMap f (Sigma t u) = f $ Sigma (typeMap f t) (typeMap f u)
+typeMap f (Pi t u) = f $ Pi (typeMap f t) (typeMap f u)
+typeMap f (Inl t) = f $ Inl (typeMap f t)
+typeMap f (Inr t) = f $ Inr (typeMap f t)
+typeMap f (Ident t u) = f $ Ident (typeMap f t) (typeMap f u)
+typeMap f (DefEq t u) = f $ DefEq (typeMap f t) (typeMap f u)
+typeMap f x = f x
+
+betaReduce :: Term -> Term
+betaReduce t = typeMap beta t
+
 beta :: Term -> Term
 beta (Ap (Pi (Var x a) m) n)
-    | Set.disjoint (freeVars n) (boundVars m) = substitution (X x) m n
+    | Set.disjoint (freeVars n) (boundVars m) = substitution (Var x a) m n
     | otherwise = Ap (Pi (Var x a) m) n
 beta (Ap (Pi (X x) m) n) = beta (Ap (Lambda x m) n)
 beta (Ap (Lambda x m) n) 
     | Set.disjoint (freeVars n) (boundVars m) = substitution (X x) m n
     | otherwise = Ap (Lambda x m) n
-beta x = error (show x)
+beta x = x
 
 pureSub :: Term -> Term -> Term -> Term
 pureSub v m n = if v == m then n else go v m where
+    go (X x) (Pi (Var y a) b)
+        | x == y = Lambda x b
+        | otherwise = Pi (Var y a) (pureSub v b n)
     go v (Pi a b) = Pi (pureSub v a n) (pureSub v b n)
+    go (X x) (Sigma (Var y a) b)
+        | x == y = Pair (Var y a) (Lambda x b)
+        | otherwise = Sigma (Var y a) (pureSub v b n)
     go v (Sigma a b) = Sigma (pureSub v a n) (pureSub v b n)
     go v (Ap a b) = Ap (pureSub v a n) (pureSub v b n)
     go v (Pair a b) = Pair (pureSub v a n) (pureSub v b n)
@@ -309,6 +335,8 @@ freeVars (Def f cd) = freeVars f
 freeVars (Lambda s t) = Set.delete (X s) (freeVars t)
 freeVars (Pi (Var x a) u) = Set.delete (Var x a) (freeVars u)
 freeVars (Sigma (Var x a) u) = Set.delete (Var x a) (freeVars u)
+freeVars (Pi (X x) u) = Set.delete (X x) (freeVars u)
+freeVars (Sigma (X x) u) = Set.delete (X x) (freeVars u)
 freeVars (Ap t u) = Set.union (freeVars t) (freeVars u)
 freeVars (Pair t u) = Set.union (freeVars t) (freeVars u)
 freeVars (Coprod t u) = Set.union (freeVars t) (freeVars u)
@@ -325,6 +353,8 @@ boundVars (Def f cd) = boundVars f
 boundVars (Lambda s t) = Set.union (Set.singleton (X s)) (boundVars t)
 boundVars (Pi (Var s t) u) = Set.union (Set.singleton (Var s t)) (boundVars u)
 boundVars (Sigma (Var s t) u) = Set.union (Set.singleton (Var s t)) (boundVars u)
+boundVars (Pi (X x) u) = Set.union (Set.singleton (X x)) (boundVars u)
+boundVars (Sigma (X x) u) = Set.union (Set.singleton (X x)) (boundVars u)
 boundVars (Ap t u) = Set.union (boundVars t) (boundVars u)
 boundVars (Pair t u) = Set.union (boundVars t) (boundVars u)
 boundVars (Coprod t u) = Set.union (boundVars t) (boundVars u)
@@ -361,8 +391,8 @@ bind (X x) expr
     | Set.member (X x) (boundVars expr) = expr
     | otherwise = Lambda x expr
 bind (Var x a) expr
-    | Set.member (X x) (freeVars expr) = Pi (Var x a) expr
-    | Set.member (X x) (boundVars expr) = expr
+    | Set.member (Var x a) (freeVars expr) = Pi (Var x a) expr
+    | Set.member (Var x a) (boundVars expr) = expr
     | otherwise = Pi (Var x a) expr
 
 (|->) :: Term -> Term -> Term
