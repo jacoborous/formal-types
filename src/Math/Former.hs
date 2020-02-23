@@ -22,8 +22,8 @@ import Math.Context
 
 data Former a where
     NewType :: String -> Former Term
-    C :: String -> [Former Term] -> Former Term
-    Set :: Former Term -> [Former Term] -> Former Term
+    C :: String -> [Term] -> Former Term
+    Set :: Term -> [Term] -> Former Term
     Variable :: String -> Term -> Former Term
     Apply :: Context (Tree.Tree Term) -> Term -> [Term] -> Former Term
     Function :: Term -> Term -> Former Term
@@ -39,8 +39,8 @@ data Former a where
 
 form :: Former a -> a
 form (NewType s) = cnst s
-form (C s xs) = foldl (.$) (cnst s) (fmap form xs)
-form (Set a b) = Def (form a) (fmap form b)
+form (C s xs) = foldl (.$) (cnst s) xs
+form (Set a b) = Def a b
 form (Variable s t) = Var s t
 form (Function a b) = if Set.disjoint (freeVars a) (freeVars b) then Pi a b else error $ "Cannot construct the function type: type " ++ show b ++ " depends on elements from type " ++ show a
 form (Family x U b) = Ap b (X x)

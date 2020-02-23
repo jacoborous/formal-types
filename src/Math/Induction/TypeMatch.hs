@@ -16,6 +16,18 @@ import Data.Maybe
 shallowMatch :: Context (Tree.Tree Term) -> Term -> [Term]
 shallowMatch ctx t = fmap roll (patternMatch t (eval ctx))
 
+typeMatch :: Context (Tree.Tree Term) -> Term -> [Term]
+typeMatch ctx t = go (relate2 ctx t) where
+    go (Tree.Node (x, SUPERTYPE) xs) = [x]
+    go (Tree.Node (x, r) []) = []
+    go (Tree.Node (x, r) xs) = concatMap go xs
+
+typeOf :: Context (Tree.Tree Term) -> Term -> [Term]
+typeOf ctx t = go (relate2 ctx t) where
+    go (Tree.Node (x, SUBTYPE) xs) = [x] ++ concatMap go xs
+    go (Tree.Node (x, r) []) = []
+    go (Tree.Node (x, r) xs) = concatMap go xs
+
 patternMatch :: Term -> Tree.Tree Term -> [Tree.Tree Term]
 patternMatch t tree = removeU $ go t tree where
     go :: Term -> Tree.Tree Term -> Tree.Tree Term
