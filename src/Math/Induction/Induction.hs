@@ -30,4 +30,7 @@ computeBeta ctx = intros ctx (go (typeMatch ctx a)) where
     go [] = []
     go (x:xs) = if x /= beta x then (Ident x (beta x)) : go xs else go xs
 
---computeIdents :: Context (Tree.Tree Term) -> Context (Tree.Tree Term)
+computeIdents :: Context (Tree.Tree Term) -> Context (Tree.Tree Term)
+computeIdents ctx = go (eval ctx) where
+    go (Tree.Node (Ident a b) ts) = go2 a (eval ctx) where
+        go2 a (Tree.Node v vs) = if compare2 ctx b v == Just EQUIV then

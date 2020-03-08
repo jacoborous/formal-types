@@ -25,7 +25,6 @@ data Context a where
     Intro :: Term -> Context (Tree.Tree Term) -> Context (Tree.Tree Term)
     Merge :: Context (Tree.Tree Term) -> Context (Tree.Tree Term) -> Context (Tree.Tree Term)
     Reduce :: Either Term (Tree.Tree Term) -> Context (Tree.Tree Term)
-    Proof :: Term -> Context (Tree.Tree Term) -> Context (Tree.Tree Term)
 
 showTree :: (Show a) => Tree.Tree a -> IO ()
 showTree tree = putStrLn $ Tree.drawTree (fmap show tree)
@@ -39,7 +38,6 @@ instance Show a => Show (Context a) where
     show (Intro t ctx) = Tree.drawTree (fmap show (eval (Intro t ctx))) 
     show (Merge a b) = Tree.drawTree (fmap show (eval (Merge a b)))
     show (Reduce x) = Tree.drawTree (fmap show (eval $ Reduce x))
-    show (Proof t ctx) = Tree.drawTree (fmap show (eval (Proof t ctx)))
 
 instance (Eq a, Show a) => Ord (Tree.Tree a) where
     compare a b = compare (show a) (show b)
