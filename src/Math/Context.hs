@@ -84,19 +84,18 @@ unfoldRec t = Tree.Node t []
 
 subterms :: Term -> [Term]
 subterms t = uniques (go t) where
-  go (Def f fs) = go f
+  go (Def f fs) = go f ++ (concatMap go fs)
   go (Ap a b) = go a ++ go b
   go (Pi a b) = go a ++ go b
   go (Sigma a b) = go a ++ go b
   go (Pair a b) = go a ++ go b
   go (Ident a b) = go a ++ go b
   go (DefEq a b) = go a ++ go b
-  go (Coprod a b) = fmap Inl (go a) ++ fmap Inr (go b)
-  go (Lambda a b) = go b
+  go (Coprod a b) = go a ++ go b
+  go (Lambda x a b) = go a ++ go b
   go (Inl a) = go a
   go (Inr a) = go a
   go (Var s x) = go x
-  go (X x) = []
   go x = [x]
 
 merge :: Tree.Tree Term -> Tree.Tree Term -> Tree.Tree Term
@@ -248,10 +247,10 @@ compare2 ctx x (Def f cs)
           | or (fmap (== Just EQUIV) y) = Just SUBTYPE
           | or (fmap (== Just SUBTYPE) y) = Just SUBTYPE
           | otherwise = Just NOTEQ
-compare2 ctx (Lambda s x) (Lambda t y) = go (alphaReduce (Lambda s x)) (alphaReduce (Lambda t y)) where
-  go (Lambda a b) (Lambda c d) = compare2 ctx b d
-compare2 ctx (Pi a b) (Lambda s x) = compare2 ctx (alphaReduce $ Pi a b) (alphaReduce $ Pi (X s) x)
-compare2 ctx (Lambda s x) (Pi a b) = compare2 ctx (alphaReduce $ Pi (X s) x) (alphaReduce $ Pi a b)
+compare2 ctx (Lambda x a t) (Lambda y b u) = go (alphaReduce (Lambda x a t)) (alphaReduce (Lambda y b u)) where
+  go (Lambda x a t) (Lambda y b u) = if x == y && compare2 ctx a b == Just EQUIV then compare2 ctx t u else Just NOTEQ
+compare2 ctx (Lambda x a t) (Pi (Var y b) u) = if x == y && compare2 ctx a b == Just EQUIV && compare2 ctx t u == Just SUBTYPE then Just SUBTYPE else Just NOTEQ
+compare2 ctx (Pi (Var y b) u) (Lambda x a t) = if x == y && compare2 ctx a b == Just EQUIV && compare2 ctx t u == Just SUBTYPE then Just SUPERTYPE else Just NOTEQ
 compare2 ctx (Pi a b) (Pi c d) = go (alphaReduce (Pi a b)) (alphaReduce (Pi c d)) where
   go (Pi x y) (Pi z w) = compare2 ctx (Ap x y) (Ap z w)
 compare2 ctx (Ap a b) (Ap c d) = go (compare2 ctx a c) (compare2 ctx b d) where

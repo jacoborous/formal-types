@@ -2,6 +2,7 @@
 dist
 dist-newstyle
 formal-types.iml
+out
 *.o
 *.hi
 .idea

@@ -13,6 +13,29 @@ import qualified Data.Map.Strict as Map
 import Control.Applicative
 import Data.Maybe
 
+data Pattern = Pattern (Tree.Tree String)
+
+instance Show Pattern where
+  show (Pattern p) = Tree.drawTree p
+  
+patternTree :: Term -> Tree.Tree String
+patternTree t = Tree.Node ((pattern' t) !! 0) (fmap patternTree (subterms t))
+
+pattern' :: Term -> [String]
+pattern' U = [show U]
+pattern' (Var x s) = ["Var", x, show s]
+pattern' (Lambda x a t) = ["Lambda", show (Var x a), show t]
+pattern' (Pi a b) = ["Pi", show a, show b]
+pattern' (Sigma a b) = ["Sigma", show a, show b]
+pattern' (Pair a b) = ["Pair", show a, show b]
+pattern' (Coprod a b) = ["Coprod", show a, show b]
+pattern' (Ap a b) = ["Ap", show a, show b]
+pattern' (Ident a b) = ["Ident", show a, show b]
+pattern' (DefEq a b) = ["DefEq", show a, show b]
+pattern' (Inl a) = ["Inl", show a]
+pattern' (Inr b) = ["Inr", show b]
+pattern' (Def a bs) = ["Inductive", show a] ++ (fmap show bs)
+
 shallowMatch :: Context (Tree.Tree Term) -> Term -> [Term]
 shallowMatch ctx t = fmap roll (patternMatch t (eval ctx))
 
@@ -32,9 +55,8 @@ patternMatch :: Term -> Tree.Tree Term -> [Tree.Tree Term]
 patternMatch t tree = removeU $ go t tree where
     go :: Term -> Tree.Tree Term -> Tree.Tree Term
     go (Var x a) (Tree.Node y xs)
-        | compare2 (Cntxt tree) a y == Just EQUIV = mergeConcat (xs >>= (patternMatch (X x)))
+        | compare2 (Cntxt tree) a y == Just EQUIV = mergeConcat (xs >>= (patternMatch (Var x a)))
         | otherwise = mergeConcat (xs >>= (patternMatch (Var x a)))
-    go (X x) tree = tree
     go t (Tree.Node x xs) 
         | compare2 (Cntxt tree) t x == Just EQUIV = Tree.Node x xs
         | otherwise = mergeConcat (xs >>= (patternMatch t))
@@ -73,28 +95,12 @@ matchVarTypes (Tree.Node a xs) (Tree.Node b ys) = if a == b then checkValid (tra
     traverse [] _ d = d
     traverse (x:xs) (y:ys) d = traverse xs ys (go x y d) where
         go x (Tree.Node (Var s t) zs) d = Map.insertWith Set.union (Var s t) (Set.singleton x) d
-        go x (Tree.Node (X s) zs) d = Map.insertWith Set.union (X s) (Set.singleton x) d
         go (Tree.Node s []) (Tree.Node u []) d = d
         go (Tree.Node s x) (Tree.Node r y) d = traverse x y d
     checkValid map
         | Map.size map == 0 = True
         | otherwise = Map.foldr f True map where
             f ts v = v && (Set.size ts == 1)
-
-typeFormerTree :: Term -> Tree.Tree Term
-typeFormerTree (X x) = Tree.Node (X x) []
-typeFormerTree (Var x s) = Tree.Node (Var x s) []
-typeFormerTree (Prim p) = Tree.Node (Prim p) []
-typeFormerTree (Lambda s t) = Tree.Node (Lambda s t) [typeFormerTree (X s), typeFormerTree t]
-typeFormerTree (Pi a b) = Tree.Node (Pi a b) [typeFormerTree a, typeFormerTree b]
-typeFormerTree (Sigma a b) = Tree.Node (Sigma a b) [typeFormerTree a, typeFormerTree b]
-typeFormerTree (Pair a b) = Tree.Node (Pair a b) [typeFormerTree a, typeFormerTree b]
-typeFormerTree (Coprod a b) = Tree.Node (Coprod a b) [typeFormerTree a, typeFormerTree b]
-typeFormerTree (Ap a b) = Tree.Node (Ap a b) [typeFormerTree a, typeFormerTree b]
-typeFormerTree (Ident a b) = Tree.Node (Ident a b) [typeFormerTree a, typeFormerTree b]
-typeFormerTree (DefEq a b) = Tree.Node (DefEq a b) [typeFormerTree a, typeFormerTree b]
-typeFormerTree (Inl a) = Tree.Node (Inl a) [typeFormerTree a]
-typeFormerTree (Inr a) = Tree.Node (Inr a) [typeFormerTree a]
 
 varToFunc :: Context (Tree.Tree Term) -> Term -> Term -> Bool
 varToFunc ctx (Var t s) = \ x -> isType ctx x s

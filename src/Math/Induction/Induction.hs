@@ -12,6 +12,8 @@ import qualified Data.Set as Set
 import Data.Tree (Tree)
 import qualified Data.Tree as Tree
 
+data Inductor = Inductor [(Pattern, Term -> Term)]
+
 prove :: Former Term -> Context (Tree.Tree Term) -> Context (Tree.Tree Term)
 prove (C s xs) ctx = if and (fmap (exists ctx) xs) then intro ctx (form $ C s xs) else error "Cannot form, some types do not exist."
 prove (Family x a b) ctx = if isTrue ctx a then intros ctx ((Def (Pi a U) [b]) : (fmap (b .$) (shallowMatch ctx (Var x a)))) else intro ctx (Pi (form (Family x a b)) (Prim Zero))
@@ -29,8 +31,3 @@ computeBeta ctx = intros ctx (go (typeMatch ctx a)) where
     a = Ap (Pi U U) U
     go [] = []
     go (x:xs) = if x /= beta x then (Ident x (beta x)) : go xs else go xs
-
-computeIdents :: Context (Tree.Tree Term) -> Context (Tree.Tree Term)
-computeIdents ctx = go (eval ctx) where
-    go (Tree.Node (Ident a b) ts) = go2 a (eval ctx) where
-        go2 a (Tree.Node v vs) = if compare2 ctx b v == Just EQUIV then

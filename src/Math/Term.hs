@@ -16,7 +16,7 @@ import Data.Semigroup
 import Data.List
 import Math.Util
 
-data Term = U | X String | Lambda String Term | Var String Term
+data Term = U | Lambda String Term Term | Var String Term
     | Ap Term Term | Pair Term Term | Coprod Term Term | Inl Term | Inr Term
     | Pi Term Term | Sigma Term Term | Ident Term Term | DefEq Term Term 
     | Prim PrimConst | Def Term [Term]
@@ -26,23 +26,6 @@ data PrimConst = DefConst String
     | Prjl | Prjr 
     | DefType | Func | Refl 
     | Nat deriving (Ord, Eq)
-
-data Inductor = Inductor Term (Term -> Term)
-
-instance Show Inductor where
-    show (Inductor m f) = show m ++ " -> " ++ show (f m)
-
-instance Eq Inductor where
-    (==) (Inductor m f) (Inductor n g) = (m, f m) == (n, g n)
-
-instance Ord Inductor where
-    compare (Inductor m f) (Inductor n g) = compare (m, f m) (n, g n)
-
-indPattern :: Inductor -> Term
-indPattern (Inductor m f) = m
-
-indMorph :: Inductor -> Term -> Term
-indMorph (Inductor m f) = f
 
 instance Show PrimConst where
     show Zero = "⟘"
@@ -57,9 +40,9 @@ instance Show PrimConst where
 
 instance Show Term where
     show U = "𝓤"
-    show (X s) = s
+    --show (X s) = s
     show (Var s t) = "(" ++ s ++ " : " ++ show t ++ ")"
-    show (Lambda s t) = "λ" ++ s ++ "." ++ show t
+    show (Lambda s t1 t2) = "λ" ++ show (Var s t1) ++ "." ++ show t2
     show (Pair a b) = "(" ++ show a ++ " , " ++ show b ++ ")"
     show (Coprod a b) = "(" ++ show a ++ " + " ++ show b ++ ")"
     show (Inl a) = "Inl " ++ show a
@@ -76,31 +59,25 @@ instance Show Term where
     show (Def s cs) = show s
 
 instance Eq Term where
-    (X x) == (X y)
-        | x == wild = True
-        | y == wild = True
-        | otherwise = x == y
-    (X x) == (Var s t) = x == s && t == U
-    (Var s t) == (X x) = x == s && t == U
-    (Var s t) == (Var u v) = s == u && t == v
-    (Def x cs) == (Def y ds) = x == y
-    (Prim p) == (Prim q) = p == q
-    (Inl p) == (Inl q) = p == q
-    (Inr p) == (Inr q) = p == q
-    U == U = True
-    (Lambda s t) == (Lambda r u) = go (alphaReduce (Lambda s t)) (alphaReduce (Lambda r u)) where
-        go (Lambda s t) (Lambda r u) = t == u
-        go a b = error $ show a ++ " and " ++ show b
-    (Ap a b) == (Ap c d) = a == c && b == d
-    (Sigma a b) == (Sigma c d) = a == c && b == d
-    (Pi a b) == (Pi c d) = a == c && b == d
-    (Ident a b) == (Ident c d) = a == c && b == d
-    (DefEq a b) == (DefEq c d) = a == c && b == d
-    (Coprod a b) == (Coprod c d) = a == c && b == d
-    (Pair a b) == (Pair c d) = a == c && b == d
-    x == (Def y ds) = x == y
-    (Def x cs) == y = x == y
-    x == y = False
+    x == y = (===) (alphaReduce x) (alphaReduce y) where
+        (===) :: Term -> Term -> Bool
+        (Var s t) === (Var u v) = s == u && t === v
+        (Def x cs) === (Def y ds) = x === y
+        (Prim p) === (Prim q) = p == q
+        (Inl p) === (Inl q) = p === q
+        (Inr p) === (Inr q) = p === q
+        U === U = True
+        (Lambda s t1 t2) === (Lambda r u1 u2) = if s == r then t1 === u1 && t2 === u2 else False
+        (Ap a b) === (Ap c d) = a === c && b === d
+        (Sigma a b) === (Sigma c d) = a === c && b === d
+        (Pi a b) === (Pi c d) = a === c && b === d
+        (Ident a b) === (Ident c d) = a === c && b === d
+        (DefEq a b) === (DefEq c d) = a === c && b === d
+        (Coprod a b) === (Coprod c d) = a === c && b === d
+        (Pair a b) === (Pair c d) = a === c && b === d
+        x === (Def y ds) = x === y
+        (Def x cs) === y = x === y
+        x === y = False
 
 data TypeRel = EQUIV | SUBTYPE | SUPERTYPE | NOTEQ deriving (Eq, Show)
 
@@ -152,21 +129,15 @@ relation a b = if a == b then EQUIV else goRelation (alphaReduce a) (alphaReduce
                 | or (fmap (== EQUIV) y) = SUPERTYPE
                 | or (fmap (== SUBTYPE) y) = SUPERTYPE
                 | otherwise = NOTEQ
-    goRelation (X x) (X y)
-        | x == wild || y == wild = EQUIV
-        | x == y = EQUIV
-        | otherwise = NOTEQ
-    goRelation (X x) y = SUPERTYPE
-    goRelation y (X x) = SUBTYPE
     goRelation (Var s t) (Var u v)
         | relation t v == EQUIV = if s == u then EQUIV else NOTEQ
         | otherwise = NOTEQ
     goRelation x (Var s t) = relation x t
     goRelation (Var s t) x = relation t x
-    goRelation (Lambda s t) (Lambda x b) = go2 (alphaReduce (Lambda s t)) (alphaReduce (Lambda x b)) where
-        go2 (Lambda i j) (Lambda k l) = goRelation j l
-    goRelation (Lambda s t) (Pi (X x) b) = relation (Lambda s t) (Lambda x b)
-    goRelation (Pi (X x) b) (Lambda s t) = relation (Lambda x b) (Lambda s t)
+    goRelation (Lambda x a t) (Lambda y b u) = go2 (alphaReduce (Lambda x a t)) (alphaReduce (Lambda y b u)) where
+        go2 (Lambda x a t) (Lambda y b u) = if x == y && relation a b == EQUIV then goRelation t u else NOTEQ
+    goRelation (Lambda x a t) (Pi (Var y b) u) = if a == b && t == u then SUBTYPE else NOTEQ
+    goRelation (Pi (Var y b) u) (Lambda x a t) = if a == b && t == u then SUPERTYPE else NOTEQ
     goRelation (Pi a b) (Pi c d) = goRelation (Ap a b) (Ap c d)
     goRelation a (Sigma b c) = go (goRelation a b) (goRelation a c) where
         go x EQUIV = SUBTYPE
@@ -207,10 +178,9 @@ relation a b = if a == b then EQUIV else goRelation (alphaReduce a) (alphaReduce
 
 depth :: Term -> Int
 depth U = 0
-depth (X s) = 1
-depth (Var s t) = 1 + depth t
+depth (Var x a) = 1 + depth a
 depth (Def f cs) = depth f
-depth (Lambda s t) = 1 + depth t 
+depth (Lambda x a t) = 1 + depth a + depth t 
 depth (Ap t u) = 2 + depth t + depth u
 depth (Pair t u) = 2 + depth t + depth u
 depth (Coprod t u) = 2 + depth t + depth u
@@ -228,8 +198,8 @@ instance Ord Term where
         | relation x y == SUBTYPE = LT
         | otherwise = GT
 
-indX :: Int -> Term
-indX n = X $ "𝑥" ++ subscript n
+indX :: Int -> Term -> Term
+indX n a = Var ("𝑥" ++ subscript n) a
 
 subscript :: Int -> String
 subscript i 
@@ -242,23 +212,19 @@ subscript i
 etaConvert :: Term -> Term
 etaConvert t = go t (Set.toList $ freeVars t) 0 where
     go t [] n = t
-    go t [X x] n = pureSub (X x) t (indX n)
-    go t (X x : xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
-    go t [Var x a] n = pureSub (Var x a) t (indX n) where
-    go t ((Var x a) : xs) n = go (pureSub (Var x a) t (indX n)) xs (n+1)
+    go t [Var x a] n = pureSub (Var x a) t (indX n a) where
+    go t ((Var x a) : xs) n = go (pureSub (Var x a) t (indX n a)) xs (n+1)
 
 alphaReduce :: Term -> Term
 alphaReduce t = go t (Set.toList $ boundVars t) 0 where
     go t [] n = t
-    go t [X x] n = pureSub (X x) t (indX n)
-    go t (X x : xs) n = go (pureSub (X x) t (indX n)) xs (n+1)
-    go t [Var x a] n = pureSub (Var x a) t (indX n) where
-    go t ((Var x a) : xs) n = go (pureSub (Var x a) t (indX n)) xs (n+1)
+    go t [Var x a] n = pureSub (Var x a) t (indX n a) where
+    go t ((Var x a) : xs) n = go (pureSub (Var x a) t (indX n a)) xs (n+1)
 
 typeMap :: (Term -> Term) -> Term -> Term
 typeMap f (Var s t) = f $ Var s (typeMap f t)
 typeMap f (Def x cs) = f $ Def (typeMap f x) (fmap (typeMap f) cs)
-typeMap f (Lambda s t) = f $ Lambda s (typeMap f t)
+typeMap f (Lambda x a t) = f $ Lambda x (typeMap f a) (typeMap f t)
 typeMap f (Ap t u) = f (Ap (typeMap f t) (typeMap f u))
 typeMap f (Pair t u) = f $ Pair (typeMap f t) (typeMap f u)
 typeMap f (Coprod t u) = f $ Coprod (typeMap f t) (typeMap f u)
@@ -277,21 +243,21 @@ beta :: Term -> Term
 beta (Ap (Pi (Var x a) m) n)
     | Set.disjoint (freeVars n) (boundVars m) = substitution (Var x a) m n
     | otherwise = Ap (Pi (Var x a) m) n
-beta (Ap (Pi (X x) m) n) = beta (Ap (Lambda x m) n)
-beta (Ap (Lambda x m) n) 
-    | Set.disjoint (freeVars n) (boundVars m) = substitution (X x) m n
-    | otherwise = Ap (Lambda x m) n
+beta (Ap (Lambda x a m) n) 
+    | Set.disjoint (freeVars n) (boundVars m) = substitution (Var x a) m n
+    | otherwise = Ap (Lambda x a m) n
 beta x = x
 
 pureSub :: Term -> Term -> Term -> Term
 pureSub v m n = if v == m then n else go v m where
-    go (X x) (Pi (Var y a) b)
-        | x == y = Lambda x b
-        | otherwise = Pi (Var y a) (pureSub v b n)
+    go (Var x1 a1) (Lambda x2 a2 t) 
+           | x1 == x2 && a1 == a2 = go2 n t 
+           | otherwise = Lambda x2 a2 (pureSub (Var x1 a1) t n) 
+           where
+               go2 (Var s u) t = bind (Var s u) t
+               go2 u t = alphaReduce $ bind (Var "bind_var" u) t
+    go v (Lambda x a b) = Lambda x (pureSub v a n) (pureSub v b n)
     go v (Pi a b) = Pi (pureSub v a n) (pureSub v b n)
-    go (X x) (Sigma (Var y a) b)
-        | x == y = Pair (Var y a) (Lambda x b)
-        | otherwise = Sigma (Var y a) (pureSub v b n)
     go v (Sigma a b) = Sigma (pureSub v a n) (pureSub v b n)
     go v (Ap a b) = Ap (pureSub v a n) (pureSub v b n)
     go v (Pair a b) = Pair (pureSub v a n) (pureSub v b n)
@@ -302,13 +268,14 @@ pureSub v m n = if v == m then n else go v m where
     go v (Inl a) = Inl (pureSub v a n)
     go v (Inr a) = Inr (pureSub v a n)
     go v (Var s a) = Var s (pureSub v a n)
-    go (X x) (Lambda s t)
-        | x == s = bind n (go (X x) t)
-        | otherwise = Lambda s (go (X x) t)
     go v m = m
 
 substitution :: Term -> Term -> Term -> Term
 substitution v m n = if relation v m == EQUIV then n else go v m where
+    go (Var x1 a1) (Lambda x2 a2 t) 
+        | x1 == x2 && a1 == a2 = Lambda x2 a2 t 
+        | otherwise = Lambda x2 (substitution (Var x1 a1) a2 n) (substitution (Var x1 a1) t n) 
+    go v (Lambda x a b) = Lambda x (substitution v a n) (substitution v b n)
     go v (Pi a b)
         | relation v a == EQUIV = Pi a b
         | otherwise = Pi a (substitution v b n)
@@ -323,20 +290,14 @@ substitution v m n = if relation v m == EQUIV then n else go v m where
     go v (Ident a b) = Ident (substitution v a n) (substitution v b n)
     go v (DefEq a b) = DefEq (substitution v a n) (substitution v b n)
     go v (Def f cs) = Def (substitution v f n) (fmap (\ x -> substitution v x n) cs)
-    go (X x) (Lambda s t) 
-        | x == s = Lambda s t
-        | otherwise = Lambda s (go (X x) t)
     go v m = m
 
 freeVars :: Term -> Set.Set Term
-freeVars (X s) = Set.singleton (X s)
 freeVars (Var x a) = Set.singleton (Var x a)
 freeVars (Def f cd) = freeVars f
-freeVars (Lambda s t) = Set.delete (X s) (freeVars t)
+freeVars (Lambda x a t) = Set.delete (Var x a) (freeVars t)
 freeVars (Pi (Var x a) u) = Set.delete (Var x a) (freeVars u)
 freeVars (Sigma (Var x a) u) = Set.delete (Var x a) (freeVars u)
-freeVars (Pi (X x) u) = Set.delete (X x) (freeVars u)
-freeVars (Sigma (X x) u) = Set.delete (X x) (freeVars u)
 freeVars (Ap t u) = Set.union (freeVars t) (freeVars u)
 freeVars (Pair t u) = Set.union (freeVars t) (freeVars u)
 freeVars (Coprod t u) = Set.union (freeVars t) (freeVars u)
@@ -347,14 +308,11 @@ freeVars (DefEq t u) = Set.union (freeVars t) (freeVars u)
 freeVars _ = Set.empty
 
 boundVars :: Term -> Set.Set Term
-boundVars (X s) = Set.empty
 boundVars (Var x a) = Set.empty
 boundVars (Def f cd) = boundVars f
-boundVars (Lambda s t) = Set.union (Set.singleton (X s)) (boundVars t)
+boundVars (Lambda s t u) = Set.union (Set.singleton (Var s t)) (boundVars t)
 boundVars (Pi (Var s t) u) = Set.union (Set.singleton (Var s t)) (boundVars u)
 boundVars (Sigma (Var s t) u) = Set.union (Set.singleton (Var s t)) (boundVars u)
-boundVars (Pi (X x) u) = Set.union (Set.singleton (X x)) (boundVars u)
-boundVars (Sigma (X x) u) = Set.union (Set.singleton (X x)) (boundVars u)
 boundVars (Ap t u) = Set.union (boundVars t) (boundVars u)
 boundVars (Pair t u) = Set.union (boundVars t) (boundVars u)
 boundVars (Coprod t u) = Set.union (boundVars t) (boundVars u)
@@ -370,10 +328,9 @@ bindFree expr = go (Set.toList $ freeVars expr) expr where
   go (x:xs) f = go xs (bind x f)
 
 arity :: Term -> [Term]
-arity (X s) = []
 arity (Var x a) = []
 arity (Def f cd) = arity f
-arity (Lambda s t) = (X s) : (arity t)
+arity (Lambda s t u) = (Var s t) : (arity t)
 arity (Pi (Var s t) u) = (Var s t) : (arity u)
 arity (Sigma (Var s t) u) = (Var s t) : (arity u)
 arity (Ap t u) = (arity t) ++ (arity u)
@@ -386,14 +343,11 @@ arity (DefEq t u) = (arity t) ++ (arity u)
 arity _ = []
 
 bind :: Term -> Term -> Term
-bind (X x) expr 
-    | Set.member (X x) (freeVars expr) = Lambda x expr
-    | Set.member (X x) (boundVars expr) = expr
-    | otherwise = Lambda x expr
 bind (Var x a) expr
-    | Set.member (Var x a) (freeVars expr) = Pi (Var x a) expr
+    | Set.member (Var x a) (freeVars expr) = Lambda x a expr
     | Set.member (Var x a) (boundVars expr) = expr
-    | otherwise = Pi (Var x a) expr
+    | otherwise = Lambda x a expr
+bind t expr = bind (Var wild t) expr
 
 (|->) :: Term -> Term -> Term
 t |-> expr = bind t expr
@@ -410,9 +364,8 @@ x .= y = DefEq x y
 (~=) :: Term -> Term -> Term
 x ~= y = Ident x y
 
-(.:) :: Term -> Term -> Term
-(X x) .: t = Var x t
-a .: b = Def b [a]
+(.:) :: String -> Term -> Term
+x .: t = Var x t
 
 prjl :: Term -> Term
 prjl = Ap (Prim Prjl)
@@ -434,12 +387,6 @@ nary p xs = Prim p .$ go xs where
 
 processList :: [a -> a] -> a -> a
 processList fs a = foldl (\ a f -> f a) a fs  
- 
-toIdInd :: Term -> Inductor
-toIdInd (Pi a b) 
-    | a == b = Inductor a id
-    | otherwise = Inductor (Pi a b) id 
-toIdInd t = Inductor t id --id
 
 uniquejoin :: Ord a => [a] -> [a]
 uniquejoin x = Set.toList $ Set.fromList x
@@ -454,7 +401,7 @@ cnst :: String -> Term
 cnst s = Prim $ DefConst s
 
 wild = "𝑥"
-wildcard = X wild
+wildcard = Var wild U
 
 inType :: Term -> Term -> Term
 inType x a = Def a [x]
@@ -462,36 +409,14 @@ inType x a = Def a [x]
 inU :: Term -> Term
 inU x = inType x U
 
-xInType :: String -> String -> Term
-xInType s t = inType (X s) (cnst t)
-
 typesIn :: [Term] -> Term -> Term
 typesIn xs a = Def a xs
-
-xsInType :: [String] -> String -> Term
-xsInType xs a = Def (cnst a) (go xs) where
-  go = map X
-
-assocLaw0 :: Inductor
-assocLaw0 = Inductor (Pair (Pair U U) U) (\ (Pair (Pair a b) c) -> Pair a (Pair b c))
-
-assocLaw1 :: Inductor
-assocLaw1 = Inductor (Pair U (Pair U U)) (\ (Pair a (Pair b c)) -> Pair (Pair a b) c)
-
-reflectLaw :: Inductor
-reflectLaw = Inductor (DefEq U U) (\(DefEq a b) -> DefEq b a)
 
 anyInhabOf :: Term -> Term
 anyInhabOf = Ap (Ap (Prim DefType) wildcard)
 
 equivType :: Term
 equivType = Ident U U
-
-identityFunctorLaw1 :: Inductor
-identityFunctorLaw1 = Inductor (Ap U (Ident U U)) (\ (Ap a (Ident b c)) -> Ident (a .$ b) (a .$ c) )
-
-identityFunctorLaw2 :: Inductor
-identityFunctorLaw2 = Inductor (Ap (Ident U U) U) (\ (Ap (Ident a b) c) -> Ident (a .$ c) (b .$ c) )
 
 alpha :: Term -> Term -> Term
 alpha v t = bind v $ beta $ t .$ v
@@ -504,6 +429,6 @@ treeType :: Tree.Tree Term -> Term
 treeType (Tree.Node t []) = t
 treeType (Tree.Node t cs) = Def t (fmap treeType cs)
 
-expr :: Int -> Term -> Term
-expr 0 t = bind (indX 0) (t .$ indX 0)
-expr n t = bind (indX n) (expr (n - 1) t .$ indX n)
+expr :: Int -> Term -> Term -> Term
+expr 0 x t = bind (indX 0 x) (t .$ indX 0 x)
+expr n x t = bind (indX n x) (expr (n - 1) x t .$ indX n x)
