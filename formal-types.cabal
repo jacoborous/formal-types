@@ -24,11 +24,6 @@ library
     Math.Context,
     Math.Former,
     Math.Induction.Induction,
-    Math.Induction.IdentityType,
-    Math.Induction.PiType,
-    Math.Induction.SigmaType,
-    Math.Induction.CoprodType, 
-    Math.Induction.NatType, 
     Math.Induction.TypeMatch,
     Math.Util
   -- other-modules:

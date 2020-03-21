@@ -11,11 +11,6 @@ module FormalTypes (
   module Math.Context,
   module Math.Former,
   module Math.Induction.Induction,
-  module Math.Induction.IdentityType,
-  module Math.Induction.PiType,
-  module Math.Induction.SigmaType,
-  module Math.Induction.CoprodType, 
-  module Math.Induction.NatType, 
   module Math.Induction.TypeMatch,
   module Data.Set,
   module Data.Tree,
@@ -27,11 +22,6 @@ import Math.Util
 import Math.Context
 import Math.Former
 import Math.Induction.Induction
-import Math.Induction.IdentityType
-import Math.Induction.PiType
-import Math.Induction.SigmaType
-import Math.Induction.CoprodType
-import Math.Induction.NatType
 import Math.Induction.TypeMatch
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -40,4 +30,4 @@ import qualified Data.Tree as Tree
 import qualified Data.Map.Strict as Map
 
 ctx0 :: Context (Tree.Tree Term)
-ctx0 = intros Init [zero, one, two, nat]
+ctx0 = intros Init []
