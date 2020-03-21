@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Created by .ignore support plugin (hsz.mobi)
 dist
 dist-newstyle
@@ -10,3 +11,17 @@ out
 .ghc.environment.x86_64-mingw32-8.6.5
 cabal.project.local
 stack.yaml.lock
+=======
+# Created by .ignore support plugin (hsz.mobi)
+dist
+dist-newstyle
+formal-types.iml
+out
+*.o
+*.hi
+.idea
+.stack-work
+.ghc.environment.x86_64-mingw32-8.6.5
+cabal.project.local
+stack.yaml.lock
+>>>>>>> b5b58b34cdfda8e83a32778ee25ecd15633af83b
