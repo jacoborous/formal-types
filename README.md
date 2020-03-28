@@ -4,7 +4,7 @@ formal-types
 
 A work-in-progress, personal development project to understand Homotopy Type Theory. Implementation is mainly in Haskell. 
 Author claims no credit for the development of any kind of Type Theory nor makes any guarantees that the contents of this library 
-function the way these concepts are understood in mathematics.
+function the way these concepts are understood in mathematics.  (Though it goes without saying that this is, in fact, the goal).
 
 Other HTT Language Projects
 =========
