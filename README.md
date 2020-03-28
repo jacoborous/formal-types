@@ -6,6 +6,12 @@ A work-in-progress, personal development project to understand Homotopy Type The
 Author claims no credit for the development of any kind of Type Theory nor makes any guarantees that the contents of this library 
 function the way these concepts are understood in mathematics.
 
+Other HTT Language Projects
+=========
+[Arend](https://github.com/JetBrains/Arend) 
+[HoTT Coq](https://github.com/HoTT/HoTT)
+[HoTT Agda](https://github.com/HoTT/HoTT-Agda)
+
 References
 =========
 [Intuitionistic Type Theory](https://plato.stanford.edu/entries/type-theory-intuitionistic/)
