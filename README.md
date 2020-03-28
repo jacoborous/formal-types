@@ -6,6 +6,10 @@ A work-in-progress, personal development project to understand Homotopy Type The
 Author claims no credit for the development of any kind of Type Theory nor makes any guarantees that the contents of this library 
 function the way these concepts are understood in mathematics.  (Though it goes without saying that this is, in fact, the goal).
 
+Current Usage Status
+=========
+Currently this library is non-functional, and entirely in the development stage so far. When it gets to the stage where some semblance of a usable interface emerges, this README will be updated to reflect that.
+
 Other HTT Language Projects
 =========
 
